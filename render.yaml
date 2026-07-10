@@ -2,6 +2,7 @@ services:
   - type: web
     name: ma-soi-online-backend
     runtime: node
+    plan: free
     branch: master
     rootDir: backend
     buildCommand: npm ci
