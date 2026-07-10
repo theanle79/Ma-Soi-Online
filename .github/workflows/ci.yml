@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [Dev, master]
+  push:
+    branches: [Dev, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check server modules
+        run: |
+          node --check src/server.js
+          node --check src/rooms.js
+          node --check src/roles.js
+
+      - name: Verify health endpoint
+        run: |
+          npm start &
+          server_pid=$!
+          trap 'kill $server_pid' EXIT
+
+          for attempt in {1..10}; do
+            if curl --fail --silent --show-error http://127.0.0.1:3001/health; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          exit 1

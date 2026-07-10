@@ -22,7 +22,7 @@ backend/
 
 ## Prerequisites
 
-- Node.js 20 or newer
+- Node.js 20.19 or newer
 - npm
 
 ## Setup
@@ -72,3 +72,24 @@ The frontend runs on `http://localhost:5173`.
 - Game logic is intentionally not implemented yet.
 - Rooms are stored in memory and reset when the backend restarts.
 - Socket.io currently supports connection, room joining, and room leaving events for local wiring.
+
+## CI/CD
+
+GitHub Actions validates the frontend and backend for pull requests and pushes to `Dev` and `master`.
+
+- `Dev`: CI only.
+- `master`: production branch. The frontend deploys to Vercel and Render deploys the backend after GitHub checks pass.
+
+The deployed frontend is `frontend`.
+
+### One-time configuration
+
+1. Create a Render Blueprint from `render.yaml` and connect it to this GitHub repository. Set the `CLIENT_ORIGIN` value to the Vercel production URL. Keep the service at one instance while rooms use in-memory storage.
+2. In the Vercel project, set the production `VITE_API_URL` environment variable to the public Render backend URL, for example `https://your-service.onrender.com`.
+3. In the GitHub repository, add these Actions secrets:
+   - `VERCEL_TOKEN`
+   - `VERCEL_ORG_ID`
+   - `VERCEL_PROJECT_ID`
+4. Protect `master` in GitHub and require the `Frontend` and `Backend` CI checks before merging.
+
+The backend health endpoint is checked at `/health`. Deploying or restarting the Render service clears all rooms because they are intentionally stored in memory.
