@@ -1,49 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
+import {
+  API_URL,
+  buildSlots,
+  EMPTY_SETUP,
+  formatScore,
+  getDeviceId,
+  hydrateSlots,
+  joinCodeFromPath,
+  playerInitial,
+  roleWakesTonight,
+  scriptForRole,
+  TEAM_LABELS,
+  TEAM_ORDER,
+  WINNER_LABELS,
+} from "./game-utils.js";
 import "./styles.css";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
-const EMPTY_SETUP = { selectedRoles: [], totalSlots: 0, balanceMode: "new_players", balance: { score: 0, withinTarget: false } };
-const TEAM_LABELS = { village: "Phe Dân", werewolf: "Phe Sói", vampire: "Ma Cà Rồng", other: "Phe riêng" };
-const WINNER_LABELS = { village: "Phe Dân chiến thắng", werewolf: "Phe Sói chiến thắng", vampire: "Phe Ma Cà Rồng chiến thắng", draw: "Ván chơi hòa" };
-const TEAM_ORDER = ["village", "werewolf", "vampire", "other"];
-
-function getDeviceId() {
-  const key = "ma-soi-device-id";
-  const saved = localStorage.getItem(key);
-  if (saved) return saved;
-  const id = crypto.randomUUID();
-  localStorage.setItem(key, id);
-  return id;
-}
-
-function joinCodeFromPath() {
-  return window.location.pathname.match(/^\/join\/([a-z0-9]{6})$/i)?.[1]?.toUpperCase() || "";
-}
-
-function buildSlots(selectedRoles) {
-  return selectedRoles
-    .flatMap((role) => Array.from({ length: role.quantity }, (_, index) => ({ key: `${role.id}-${index}`, roleId: role.id, role, playerId: "" })))
-    .sort((left, right) => left.role.nightOrder - right.role.nightOrder || left.role.name.localeCompare(right.role.name));
-}
-
-function hydrateSlots(slots, assignments) {
-  const queues = new Map();
-  assignments.forEach((assignment) => {
-    const queue = queues.get(assignment.roleId) || [];
-    queue.push(assignment.playerId);
-    queues.set(assignment.roleId, queue);
-  });
-  return slots.map((slot) => ({ ...slot, playerId: queues.get(slot.roleId)?.shift() || "" }));
-}
-
-function formatScore(score) {
-  return score > 0 ? `+${score}` : String(score || 0);
-}
-
-function playerInitial(name) {
-  return name?.trim().slice(0, 1).toUpperCase() || "?";
-}
 
 function PaperShell({ children, profileName, onLeave, showHeader = true }) {
   const profile = <><span className="profile-avatar">{playerInitial(profileName || "S")}</span><span><strong>{profileName || "Sói Già Làng"}</strong><small>{onLeave ? "Rời bàn chơi" : "Vai kín"}</small></span></>;
@@ -259,19 +231,6 @@ function Assignment({ room, setup, catalog, modes, balanceMode, setBalanceMode, 
 
 function Waiting({ room, onLeave, toast, dismissToast }) {
   return <PaperShell profileName="Người chơi" onLeave={onLeave}>{toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}<section className="ritual-screen"><div className="paper-panel waiting-panel"><div className="night-mark">☾</div><span className="ribbon blue">Đang chuẩn bị</span><h2>Quan Trò đang phân vai</h2><p>Hãy giữ thiết bị này riêng tư. Vai của bạn sẽ chỉ xuất hiện tại đây sau khi Quan Trò hoàn tất.</p><div className="role-chips">{room.players.map((player) => <span key={player.id}>{player.name}</span>)}</div></div></section></PaperShell>;
-}
-
-function roleWakesTonight(role, gameDay) {
-  if (role.wakesAtNight === "every_night") return true;
-  if (role.wakesAtNight === "night_one") return gameDay === 1;
-  if (role.wakesAtNight === "from_night_two") return gameDay >= 2;
-  return false;
-}
-
-function scriptForRole(role, room) {
-  const victims = room.players.filter((player) => player.pendingDeath).map((player) => player.name);
-  const victimText = victims.length ? victims.join(", ") : "chưa có ai được đánh dấu";
-  return (role.moderatorScript || role.ability).replace("{victims}", victimText);
 }
 
 function Moderator({ room, roles, onLeave, onMark, onDay, onNight, toast, dismissToast }) {

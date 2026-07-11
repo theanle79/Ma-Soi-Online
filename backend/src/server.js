@@ -2,6 +2,7 @@ import cors from "cors";
 import express from "express";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
+import { createServiceClient, GatewayError } from "./service-client.js";
 
 const PORT = Number(process.env.PORT || 3001);
 const LOBBY_SERVICE_URL = process.env.LOBBY_SERVICE_URL || "http://localhost:3002";
@@ -21,34 +22,8 @@ const sessions = new Map();
 app.use(cors({ origin: CLIENT_ORIGINS }));
 app.use(express.json());
 
-class GatewayError extends Error {
-  constructor(code, message, status = 400) {
-    super(message);
-    this.code = code;
-    this.status = status;
-  }
-}
-
-async function serviceRequest(baseUrl, path, { method = "GET", body } = {}) {
-  let response;
-  try {
-    response = await fetch(`${baseUrl}${path}`, {
-      method,
-      headers: body ? { "content-type": "application/json" } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  } catch {
-    throw new GatewayError("service_unavailable", "Dịch vụ trò chơi đang tạm thời không phản hồi.", 503);
-  }
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new GatewayError(payload.error || "service_error", payload.message || "Không thể hoàn tất thao tác.", response.status);
-  }
-  return payload;
-}
-
-const lobby = (path, options) => serviceRequest(LOBBY_SERVICE_URL, path, options);
-const roles = (path, options) => serviceRequest(ROLE_SERVICE_URL, path, options);
+const lobby = createServiceClient(LOBBY_SERVICE_URL);
+const roles = createServiceClient(ROLE_SERVICE_URL);
 
 function sessionFor(socket, { hostOnly = false } = {}) {
   const session = sessions.get(socket.id);
