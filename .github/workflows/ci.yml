@@ -41,9 +41,6 @@ jobs:
   backend:
     name: Backend
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -53,28 +50,54 @@ jobs:
         with:
           node-version: 20.19.0
           cache: npm
-          cache-dependency-path: backend/package-lock.json
+          cache-dependency-path: |
+            backend/package-lock.json
+            services/lobby/package-lock.json
+            services/roles/package-lock.json
 
-      - name: Install dependencies
+      - name: Install gateway dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Install Lobby Service dependencies
+        working-directory: services/lobby
+        run: npm ci
+
+      - name: Install Role Service dependencies
+        working-directory: services/roles
         run: npm ci
 
       - name: Check server modules
         run: |
-          node --check src/server.js
-          node --check src/rooms.js
-          node --check src/roles.js
+          node --check backend/src/server.js
+          node --check services/lobby/src/server.js
+          node --check services/lobby/src/app.js
+          node --check services/roles/src/server.js
+          node --check services/roles/src/app.js
+
+      - name: Test role balancing and win conditions
+        working-directory: services/roles
+        run: npm test
+
+      - name: Start backend services
+        run: docker compose up --build --detach
 
       - name: Verify health endpoint
         run: |
-          npm start &
-          server_pid=$!
-          trap 'kill $server_pid' EXIT
-
-          for attempt in {1..10}; do
+          for attempt in {1..30}; do
             if curl --fail --silent --show-error http://127.0.0.1:3001/health; then
               exit 0
             fi
-            sleep 1
+            sleep 2
           done
 
+          docker compose logs
           exit 1
+
+      - name: Test multiplayer integration flow
+        working-directory: backend
+        run: npm run test:integration
+
+      - name: Stop backend services
+        if: always()
+        run: docker compose down
