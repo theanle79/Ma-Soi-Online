@@ -189,14 +189,14 @@ io.on("connection", (socket) => {
     await emitHostView(socket, session);
   }));
 
-  socket.on("roles:generate", handle(socket, async ({ balanceMode }) => {
+  socket.on("roles:generate", handle(socket, async ({ balanceMode, requestId }) => {
     const session = sessionFor(socket, { hostOnly: true });
-    await roles(`/rooms/${session.roomId}/generate`, {
+    const { setup } = await roles(`/rooms/${session.roomId}/generate`, {
       method: "POST",
       body: { hostId: session.actorId, balanceMode },
     });
     await broadcastRoom(session.roomId);
-    await emitHostView(socket, session);
+    socket.emit("roles:host-view", { setup, assignments: [], requestId: requestId || null });
   }));
 
   socket.on("roles:assign-random", handle(socket, async () => {

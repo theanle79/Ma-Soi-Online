@@ -19,3 +19,12 @@ test("avoids the immediately previous random role set", () => {
   const second = generateBalancedSelection(12, "balanced", first.signature);
   assert.notEqual(first.signature, second.signature);
 });
+
+test("always changes consecutive six-player role sets", () => {
+  let previousSignature = null;
+  for (let iteration = 0; iteration < 100; iteration += 1) {
+    const generated = generateBalancedSelection(6, "balanced", previousSignature);
+    assert.notEqual(generated.signature, previousSignature);
+    previousSignature = generated.signature;
+  }
+});

@@ -75,8 +75,10 @@ test("runs the persistent lobby, balanced role deal, and day transition flow", a
 
   const catalog = await emitAndWait(host, "roles:catalog", {}, "roles:catalog", (result) => result.roles.length === 35);
   assert.match(catalog.roles.find((role) => role.id === "witch").moderatorScript, /bình thuốc cứu/i);
-  const firstGenerated = await emitAndWait(host, "roles:generate", { balanceMode: "balanced" }, "roles:host-view", (state) => state.setup.totalSlots === 6);
-  const secondGenerated = await emitAndWait(host, "roles:generate", { balanceMode: "balanced" }, "roles:host-view", (state) => state.setup.totalSlots === 6);
+  const firstRequestId = crypto.randomUUID();
+  const firstGenerated = await emitAndWait(host, "roles:generate", { balanceMode: "balanced", requestId: firstRequestId }, "roles:host-view", (state) => state.requestId === firstRequestId);
+  const secondRequestId = crypto.randomUUID();
+  const secondGenerated = await emitAndWait(host, "roles:generate", { balanceMode: "balanced", requestId: secondRequestId }, "roles:host-view", (state) => state.requestId === secondRequestId);
   assert.equal(secondGenerated.setup.balance.withinTarget, true);
   assert.notEqual(firstGenerated.setup.lastGeneratedSignature, secondGenerated.setup.lastGeneratedSignature);
 
