@@ -143,6 +143,24 @@ io.on("connection", (socket) => {
     io.to(room.id).emit("room:updated", state);
   }));
 
+  socket.on("room:resume", handle(socket, async ({ roomId, actorId }) => {
+    const state = await buildRoomState(roomId);
+    const isHost = state.room.hostId === actorId;
+    const isPlayer = state.room.players.some((player) => player.id === actorId);
+    if (!isHost && !isPlayer) {
+      throw new GatewayError("not_in_room", "Bạn không thuộc phòng này.", 403);
+    }
+    if (state.room.status === "closed") {
+      throw new GatewayError("invalid_room_state", "Phòng đã đóng.", 409);
+    }
+    const session = { roomId: state.room.id, actorId, isHost };
+    sessions.set(socket.id, session);
+    socket.join(session.roomId);
+    socket.emit("room:resumed", state);
+    await emitHostView(socket, session);
+    await emitPlayerState(socket, session);
+  }));
+
   socket.on("room:start", handle(socket, async () => {
     const session = sessionFor(socket, { hostOnly: true });
     await lobby(`/rooms/${session.roomId}/start`, { method: "POST", body: { hostId: session.actorId } });
@@ -227,6 +245,20 @@ io.on("connection", (socket) => {
     await broadcastRoom(session.roomId);
   }));
 
+  socket.on("game:continue", handle(socket, async () => {
+    const session = sessionFor(socket, { hostOnly: true });
+    // Remove private roles before reopening the lobby. If this fails, the ended room is unchanged and retryable.
+    await roles(`/rooms/${session.roomId}/reset-assignments`, { method: "POST", body: { hostId: session.actorId } });
+    await lobby(`/rooms/${session.roomId}/continue`, { method: "POST", body: { hostId: session.actorId } });
+    await broadcastRoom(session.roomId);
+  }));
+
+  socket.on("room:disband", handle(socket, async () => {
+    const session = sessionFor(socket, { hostOnly: true });
+    await lobby(`/rooms/${session.roomId}/disband`, { method: "POST", body: { hostId: session.actorId } });
+    await emitRoomClosed(session.roomId, "Quản Trò đã giải tán phòng.");
+  }));
+
   socket.on("room:leave", handle(socket, async () => {
     const session = sessionFor(socket);
     if (session.isHost) {
@@ -241,17 +273,7 @@ io.on("connection", (socket) => {
   }));
 
   socket.on("disconnecting", () => {
-    const session = sessions.get(socket.id);
     sessions.delete(socket.id);
-    if (!session?.isHost) return;
-    void (async () => {
-      try {
-        await lobby(`/rooms/${session.roomId}/close`, { method: "POST", body: { hostId: session.actorId } });
-        await emitRoomClosed(session.roomId, "Quan Trò đã ngắt kết nối. Phòng đã được đóng.");
-      } catch (error) {
-        console.error("Unable to close room after host disconnect", error);
-      }
-    })();
   });
 });
 

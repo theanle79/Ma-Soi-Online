@@ -29,6 +29,7 @@ function PaperShell({ children, profileName, onLeave, showHeader = true }) {
 
 export default function App() {
   const actorId = useRef(getDeviceId());
+  const roomRef = useRef(null);
   const [socket, setSocket] = useState(null);
   const [room, setRoom] = useState(null);
   const [screen, setScreen] = useState(joinCodeFromPath() ? "join" : "welcome");
@@ -44,21 +45,31 @@ export default function App() {
   const [manualSlots, setManualSlots] = useState([]);
   const [playerRole, setPlayerRole] = useState(null);
   const [flipped, setFlipped] = useState(false);
+  const [postGameAction, setPostGameAction] = useState(null);
 
   const applyState = useCallback((state) => {
-    if (state?.room) setRoom(state.room);
+    if (state?.room) {
+      roomRef.current = state.room;
+      setRoom(state.room);
+    }
     if (state?.roleSetup) setRoleSetup(state.roleSetup);
   }, []);
 
   useEffect(() => {
     const next = io(API_URL, { transports: ["websocket", "polling"] });
     setSocket(next);
+    next.on("connect", () => {
+      const activeRoom = roomRef.current;
+      if (activeRoom) next.emit("room:resume", { roomId: activeRoom.id, actorId: actorId.current });
+    });
     next.on("room:created", (state) => { applyState(state); setScreen("lobby"); });
     next.on("room:joined", (state) => { applyState(state); setScreen("lobby"); });
+    next.on("room:resumed", applyState);
     next.on("room:updated", applyState);
-    next.on("room:error", ({ message }) => setToast(message));
+    next.on("room:error", ({ message }) => { setPostGameAction(null); setToast(message); });
     next.on("room:closed", ({ message }) => {
       setToast(message);
+      roomRef.current = null;
       setRoom(null);
       setRoleSetup(EMPTY_SETUP);
       setHostAssignments([]);
@@ -72,6 +83,11 @@ export default function App() {
   }, [applyState]);
 
   useEffect(() => { if (roleSetup?.balanceMode) setBalanceMode(roleSetup.balanceMode); }, [roleSetup?.balanceMode]);
+  useEffect(() => {
+    if (room?.status === "waiting") {
+      setHostAssignments([]); setPlayerRole(null); setFlipped(false); setPostGameAction(null);
+    }
+  }, [room?.status]);
 
   const isHost = room?.hostId === actorId.current;
   const playerCount = room?.players?.length || 0;
@@ -89,6 +105,7 @@ export default function App() {
   }
 
   function reset() {
+    roomRef.current = null;
     setRoom(null); setRoleSetup(EMPTY_SETUP); setHostAssignments([]); setPlayerRole(null); setFlipped(false); setScreen("welcome");
     window.history.replaceState({}, "", "/");
   }
@@ -126,6 +143,19 @@ export default function App() {
     socket.emit("roles:assign-manual", { assignments: manualSlots.map((slot) => ({ playerId: slot.playerId, roleId: slot.roleId })) });
   }
 
+  function continueSameSquad() {
+    if (!guardConnection() || postGameAction) return;
+    setPostGameAction("continue");
+    socket.emit("game:continue");
+  }
+
+  function disbandRoom() {
+    if (!guardConnection() || postGameAction) return;
+    if (!window.confirm("Bạn có chắc muốn giải tán phòng? Tất cả người chơi sẽ rời phòng và không thể tiếp tục với mã phòng này.")) return;
+    setPostGameAction("disband");
+    socket.emit("room:disband");
+  }
+
   function renderWelcome() {
     return <PaperShell showHeader={false}>
       {toast && <button className="toast" type="button" onClick={() => setToast(null)}>{toast}</button>}
@@ -150,7 +180,7 @@ export default function App() {
   if (room.status === "waiting") return <Lobby room={room} isHost={isHost} onLeave={leaveRoom} onStart={startAssignment} onNotice={setToast} toast={toast} dismissToast={() => setToast(null)} />;
   if (room.status === "assigning" && isHost) return <Assignment room={room} setup={roleSetup} catalog={roleCatalog} modes={balanceModes} balanceMode={balanceMode} setBalanceMode={setBalanceMode} slots={manualSlots} assignments={hostAssignments} onQuantity={changeQuantity} onGenerate={() => socket.emit("roles:generate", { balanceMode, requestId: crypto.randomUUID() })} onRandom={() => socket.emit("roles:assign-random")} onSlot={(key, playerId) => setManualSlots((current) => current.map((slot) => slot.key === key ? { ...slot, playerId } : slot))} onSave={saveManual} onFinalize={() => socket.emit("roles:finalize")} onLeave={leaveRoom} toast={toast} dismissToast={() => setToast(null)} />;
   if (room.status === "assigning") return <Waiting room={room} onLeave={leaveRoom} toast={toast} dismissToast={() => setToast(null)} />;
-  if (room.status === "ended") return <GameEnded room={room} isHost={isHost} onLeave={leaveRoom} toast={toast} dismissToast={() => setToast(null)} />;
+  if (room.status === "ended") return <GameEnded room={room} isHost={isHost} onLeave={leaveRoom} onContinue={continueSameSquad} onDisband={disbandRoom} processing={postGameAction} toast={toast} dismissToast={() => setToast(null)} />;
   if (room.status === "playing" && isHost) return <Moderator room={room} roles={roleSetup.selectedRoles || []} onLeave={leaveRoom} onMark={(playerId, markDead) => socket.emit("game:mark-death", { playerId, markDead })} onDay={() => socket.emit("game:begin-day")} onNight={() => socket.emit("game:begin-night")} toast={toast} dismissToast={() => setToast(null)} />;
   return <PlayerRole room={room} player={self} role={playerRole} flipped={flipped} setFlipped={setFlipped} toast={toast} dismissToast={() => setToast(null)} />;
 }
@@ -260,10 +290,10 @@ function Moderator({ room, roles, onLeave, onMark, onDay, onNight, toast, dismis
   </PaperShell>;
 }
 
-function GameEnded({ room, isHost, onLeave, toast, dismissToast }) {
+function GameEnded({ room, isHost, onLeave, onContinue, onDisband, processing, toast, dismissToast }) {
   return <PaperShell profileName={isHost ? room.hostName : "Người chơi"} onLeave={onLeave}>
     {toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}
-    <section className="ritual-screen"><div className="paper-panel game-ended-panel"><span className="ribbon">Ván chơi kết thúc</span><p className="game-ended-kicker">Kết quả chung cuộc</p><h2>{WINNER_LABELS[room.winner] || "Ván chơi kết thúc"}</h2><p>{room.endReason}</p><div className="game-ended-count"><strong>{room.players.filter((player) => player.isAlive).length}</strong><span>người còn sống</span></div><button className="paper-button" type="button" onClick={onLeave}>{isHost ? "Đóng bàn chơi" : "Về trang chính"}</button></div></section>
+    <section className="ritual-screen"><div className="paper-panel game-ended-panel"><span className="ribbon">Ván chơi kết thúc</span><p className="game-ended-kicker">Kết quả chung cuộc</p><h2>{WINNER_LABELS[room.winner] || "Ván chơi kết thúc"}</h2><p>{room.endReason}</p><div className="game-ended-count"><strong>{room.players.filter((player) => player.isAlive).length}</strong><span>người còn sống</span></div>{isHost ? <div className="post-game-actions"><p>Ván chơi đã kết thúc. Hãy chọn tiếp tục với đội hình hiện tại hoặc giải tán phòng.</p><button className="paper-button" type="button" disabled={Boolean(processing)} onClick={onContinue}>Tiếp tục với đội hình hiện tại</button><button className="paper-button destructive" type="button" disabled={Boolean(processing)} onClick={onDisband}>Giải tán phòng</button></div> : <p className="post-game-wait">Ván chơi đã kết thúc. Đang chờ Quản Trò quyết định tiếp tục hoặc giải tán phòng.</p>}</div></section>
   </PaperShell>;
 }
 

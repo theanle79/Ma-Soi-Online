@@ -19,3 +19,5 @@ body{font-kerning:normal}.title-lockup h1{letter-spacing:.01em;line-height:.92}.
 @media (width<=1100px){.assignment-controls{grid-template-columns:1fr}.assignment-header{grid-template-columns:1fr}.assignment-header .assignment-summary{max-width:none}.assignment-screen{padding:20px}.side-deck{opacity:.12}}
 @media (width<=700px){.assignment-header{padding:20px 16px}.assignment-header .ribbon{margin:-32px 0 14px}.assignment-summary{align-items:flex-start;flex-direction:column}.assignment-summary .score{margin-left:0}.room-code-row{align-items:flex-start;flex-direction:column}.lobby-qr{grid-template-columns:1fr;justify-items:center;text-align:center}.game-ended-panel{padding:34px 20px}}
 @media (prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+.post-game-actions{display:grid;gap:12px}.post-game-actions p,.post-game-wait{margin:0 0 4px}.paper-button.destructive{background:var(--ink-red-dark)}

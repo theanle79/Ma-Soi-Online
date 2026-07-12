@@ -296,6 +296,53 @@ export function createLobbyApp() {
     }
   });
 
+  app.post("/rooms/:roomId/continue", async (req, res, next) => {
+    try {
+      const hostId = requireUuid(req.body.hostId, "Mã Quản Trò");
+      const room = await inTransaction(async (client) => {
+        const found = await findRoom(client, req.params.roomId, { lock: true });
+        if (!found) throw appError("room_not_found", "Không tìm thấy phòng.", 404);
+        assertHost(found, hostId);
+        assertRoomStatus(found, ["ended"]);
+        await client.query(
+          `UPDATE rooms
+           SET status = 'waiting', game_day = 0, game_phase = 'lobby',
+               winner = NULL, end_reason = NULL, ended_at = NULL
+           WHERE id = $1`,
+          [found.id],
+        );
+        await client.query(
+          "UPDATE participants SET is_alive = TRUE, pending_death = FALSE WHERE room_id = $1",
+          [found.id],
+        );
+        return roomSnapshot(client, found.id);
+      });
+      res.json({ room });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/rooms/:roomId/disband", async (req, res, next) => {
+    try {
+      const hostId = requireUuid(req.body.hostId, "Mã Quản Trò");
+      const room = await inTransaction(async (client) => {
+        const found = await findRoom(client, req.params.roomId, { lock: true });
+        if (!found) throw appError("room_not_found", "Không tìm thấy phòng.", 404);
+        assertHost(found, hostId);
+        assertRoomStatus(found, ["ended"]);
+        await client.query(
+          "UPDATE rooms SET status = 'closed', game_phase = 'closed', closed_at = NOW() WHERE id = $1",
+          [found.id],
+        );
+        return roomSnapshot(client, found.id);
+      });
+      res.json({ room });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.delete("/rooms/:roomId/players/:playerId", async (req, res, next) => {
     try {
       const playerId = requireUuid(req.params.playerId, "Mã người chơi");

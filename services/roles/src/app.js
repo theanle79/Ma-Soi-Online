@@ -179,6 +179,19 @@ export function createRoleApp() {
     }
   });
 
+  app.post("/rooms/:roomId/reset-assignments", async (req, res, next) => {
+    try {
+      const hostId = requireUuid(req.body.hostId, "Mã Quản Trò");
+      const lobbyRoom = await fetchEligibility(req.params.roomId, hostId);
+      if (!lobbyRoom.actorIsHost) throw appError("not_host", "Chỉ Quản Trò mới có thể tiếp tục ván chơi.", 403);
+      if (lobbyRoom.status !== "ended") throw appError("invalid_room_state", "Phòng chưa kết thúc ván chơi.", 409);
+      await inTransaction((client) => client.query("DELETE FROM assignments WHERE room_id = $1", [req.params.roomId]));
+      res.json({ ok: true });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.post("/rooms/:roomId/configure", async (req, res, next) => {
     try {
       const hostId = requireUuid(req.body.hostId, "Mã Quan Trò");
