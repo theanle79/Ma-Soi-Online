@@ -6,13 +6,23 @@ export class GatewayError extends Error {
   }
 }
 
-export function createServiceClient(baseUrl) {
+function normalizeBaseUrl(baseUrl) {
+  const normalized = String(baseUrl || "").trim().replace(/\/+$/, "");
+  if (!normalized) return normalized;
+  return /^https?:\/\//i.test(normalized) ? normalized : `http://${normalized}`;
+}
+
+export function createServiceClient(baseUrl, serviceToken = "") {
+  const serviceBaseUrl = normalizeBaseUrl(baseUrl);
   return async (path, { method = "GET", body } = {}) => {
     let response;
     try {
-      response = await fetch(`${baseUrl}${path}`, {
+      const headers = {};
+      if (body) headers["content-type"] = "application/json";
+      if (serviceToken) headers.authorization = `Bearer ${serviceToken}`;
+      response = await fetch(`${serviceBaseUrl}${path}`, {
         method,
-        headers: body ? { "content-type": "application/json" } : undefined,
+        headers: Object.keys(headers).length ? headers : undefined,
         body: body ? JSON.stringify(body) : undefined,
       });
     } catch {

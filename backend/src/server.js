@@ -7,6 +7,7 @@ import { createServiceClient, GatewayError } from "./service-client.js";
 const PORT = Number(process.env.PORT || 3001);
 const LOBBY_SERVICE_URL = process.env.LOBBY_SERVICE_URL || "http://localhost:3002";
 const ROLE_SERVICE_URL = process.env.ROLE_SERVICE_URL || "http://localhost:3003";
+const SERVICE_AUTH_TOKEN = process.env.SERVICE_AUTH_TOKEN || "";
 const CLIENT_ORIGINS = (process.env.CLIENT_ORIGIN || "http://localhost:5173,http://127.0.0.1:5173")
   .split(",")
   .map((origin) => origin.trim())
@@ -22,8 +23,8 @@ const sessions = new Map();
 app.use(cors({ origin: CLIENT_ORIGINS }));
 app.use(express.json());
 
-const lobby = createServiceClient(LOBBY_SERVICE_URL);
-const roles = createServiceClient(ROLE_SERVICE_URL);
+const lobby = createServiceClient(LOBBY_SERVICE_URL, SERVICE_AUTH_TOKEN);
+const roles = createServiceClient(ROLE_SERVICE_URL, SERVICE_AUTH_TOKEN);
 
 function sessionFor(socket, { hostOnly = false } = {}) {
   const session = sessions.get(socket.id);

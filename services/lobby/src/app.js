@@ -49,6 +49,12 @@ export function createLobbyApp() {
     }
   });
 
+  app.use((req, res, next) => {
+    const expectedToken = process.env.SERVICE_AUTH_TOKEN;
+    if (!expectedToken || req.get("authorization") === `Bearer ${expectedToken}`) return next();
+    return res.status(401).json({ error: "service_unauthorized", message: "Yêu cầu nội bộ không hợp lệ." });
+  });
+
   app.get("/rooms", async (_req, res, next) => {
     try {
       const result = await pool.query("SELECT id FROM rooms WHERE status <> 'closed' ORDER BY created_at DESC");

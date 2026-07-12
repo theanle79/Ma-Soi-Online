@@ -4,6 +4,8 @@ import test from "node:test";
 import { io } from "socket.io-client";
 
 const gatewayUrl = process.env.GATEWAY_URL || "http://localhost:3001";
+const lobbyUrl = process.env.LOBBY_URL || "http://localhost:3002";
+const roleUrl = process.env.ROLE_URL || "http://localhost:3003";
 const timeout = 8_000;
 
 function connectClient() {
@@ -39,6 +41,20 @@ function emitAndWait(socket, emittedEvent, payload, receivedEvent, predicate) {
   socket.emit(emittedEvent, payload);
   return event;
 }
+
+test("keeps health checks public and protects domain-service APIs", async () => {
+  const [lobbyHealth, roleHealth, lobbyRooms, roleCatalog] = await Promise.all([
+    fetch(`${lobbyUrl}/health`),
+    fetch(`${roleUrl}/health`),
+    fetch(`${lobbyUrl}/rooms`),
+    fetch(`${roleUrl}/roles`),
+  ]);
+
+  assert.equal(lobbyHealth.status, 200);
+  assert.equal(roleHealth.status, 200);
+  assert.equal(lobbyRooms.status, 401);
+  assert.equal(roleCatalog.status, 401);
+});
 
 test("runs the persistent lobby, balanced role deal, and day transition flow", async (t) => {
   const sockets = [];
