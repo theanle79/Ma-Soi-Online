@@ -46,10 +46,7 @@ services:
           name: ma-soi-online-dev-role-db
           property: connectionString
       - key: LOBBY_SERVICE_URL
-        fromService:
-          type: web
-          name: ma-soi-online-dev-lobby
-          property: hostport
+        value: https://ma-soi-online-dev-lobby.onrender.com
       - fromGroup: ma-soi-online-dev-service-auth
 
   - type: web
@@ -71,15 +68,9 @@ services:
       - key: NODE_VERSION
         value: 20.19.0
       - key: LOBBY_SERVICE_URL
-        fromService:
-          type: web
-          name: ma-soi-online-dev-lobby
-          property: hostport
+        value: https://ma-soi-online-dev-lobby.onrender.com
       - key: ROLE_SERVICE_URL
-        fromService:
-          type: web
-          name: ma-soi-online-dev-roles
-          property: hostport
+        value: https://ma-soi-online-dev-roles.onrender.com
       - key: CLIENT_ORIGIN
         value: https://ma-soi-online-proto1-git-dev-andt.vercel.app,http://localhost:5173,http://127.0.0.1:5173
       - fromGroup: ma-soi-online-dev-service-auth
