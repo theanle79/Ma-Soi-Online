@@ -11,7 +11,7 @@ Render provisions the remaining topology from `render.yaml`:
 - Lobby Service and its PostgreSQL database
 - Role Service and its PostgreSQL database
 
-All three Node services use Render's free web-service plan. Lobby and Role Service requests require a shared generated `SERVICE_AUTH_TOKEN`; only their `/health` endpoints remain public. Service-to-service requests use Render's private-network `hostport` values.
+All three Node services use Render's free web-service plan. Lobby and Role Service requests require a shared generated `SERVICE_AUTH_TOKEN`; only their `/health` endpoints remain public. Service-to-service requests use the services' HTTPS URLs because Render's free-tier internal hostname route did not provide reliable connectivity for this deployment. The bearer token keeps those public service APIs protected.
 
 ## First deployment
 
