@@ -36,33 +36,36 @@ services:
     environment:
       PORT: 3002
       LOBBY_DATABASE_URL: postgres://ma_soi:ma_soi@lobby-db:5432/ma_soi_lobby
+      SERVICE_AUTH_TOKEN: local-dev-service-token
     depends_on:
       lobby-db:
         condition: service_healthy
-    expose:
-      - "3002"
+    ports:
+      - "3002:3002"
 
   roles:
     build: ./services/roles
     environment:
       PORT: 3003
       ROLE_DATABASE_URL: postgres://ma_soi:ma_soi@role-db:5432/ma_soi_roles
-      LOBBY_SERVICE_URL: http://lobby:3002
+      LOBBY_SERVICE_URL: lobby:3002
+      SERVICE_AUTH_TOKEN: local-dev-service-token
     depends_on:
       role-db:
         condition: service_healthy
       lobby:
         condition: service_started
-    expose:
-      - "3003"
+    ports:
+      - "3003:3003"
 
   gateway:
     build: ./backend
     environment:
       PORT: 3001
-      LOBBY_SERVICE_URL: http://lobby:3002
-      ROLE_SERVICE_URL: http://roles:3003
+      LOBBY_SERVICE_URL: lobby:3002
+      ROLE_SERVICE_URL: roles:3003
       CLIENT_ORIGIN: http://localhost:5173,http://127.0.0.1:5173
+      SERVICE_AUTH_TOKEN: local-dev-service-token
     depends_on:
       lobby:
         condition: service_started

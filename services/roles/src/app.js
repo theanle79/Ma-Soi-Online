@@ -15,10 +15,18 @@ import {
 } from "./role-domain.js";
 import { evaluateWinner } from "./win.js";
 
-const LOBBY_SERVICE_URL = process.env.LOBBY_SERVICE_URL || "http://localhost:3002";
+function normalizeBaseUrl(baseUrl) {
+  const normalized = String(baseUrl || "").trim().replace(/\/+$/, "");
+  return /^https?:\/\//i.test(normalized) ? normalized : `http://${normalized}`;
+}
+
+const LOBBY_SERVICE_URL = normalizeBaseUrl(process.env.LOBBY_SERVICE_URL || "http://localhost:3002");
+const SERVICE_AUTH_TOKEN = process.env.SERVICE_AUTH_TOKEN || "";
 
 async function fetchEligibility(roomId, actorId) {
-  const response = await fetch(`${LOBBY_SERVICE_URL}/internal/rooms/${roomId}/eligibility?actorId=${encodeURIComponent(actorId)}`);
+  const response = await fetch(`${LOBBY_SERVICE_URL}/internal/rooms/${roomId}/eligibility?actorId=${encodeURIComponent(actorId)}`, {
+    headers: SERVICE_AUTH_TOKEN ? { authorization: `Bearer ${SERVICE_AUTH_TOKEN}` } : undefined,
+  });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw appError(body.error || "lobby_unavailable", body.message || "Không thể xác thực phòng.", response.status);
   return body.room;
@@ -110,6 +118,12 @@ export function createRoleApp() {
     } catch (error) {
       next(error);
     }
+  });
+
+  app.use((req, res, next) => {
+    const expectedToken = process.env.SERVICE_AUTH_TOKEN;
+    if (!expectedToken || req.get("authorization") === `Bearer ${expectedToken}`) return next();
+    return res.status(401).json({ error: "service_unauthorized", message: "Yêu cầu nội bộ không hợp lệ." });
   });
 
   app.get("/roles", (_req, res) => {

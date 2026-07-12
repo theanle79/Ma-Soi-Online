@@ -1,9 +1,63 @@
 services:
   - type: web
-    name: ma-soi-online-backend
+    name: ma-soi-online-dev-lobby
     runtime: node
     plan: free
-    branch: master
+    region: singapore
+    branch: Dev
+    rootDir: services/lobby
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeployTrigger: checksPass
+    buildFilter:
+      paths:
+        - services/lobby/**
+        - render.yaml
+    envVars:
+      - key: NODE_VERSION
+        value: 20.19.0
+      - key: LOBBY_DATABASE_URL
+        fromDatabase:
+          name: ma-soi-online-dev-lobby-db
+          property: connectionString
+      - fromGroup: ma-soi-online-dev-service-auth
+
+  - type: web
+    name: ma-soi-online-dev-roles
+    runtime: node
+    plan: free
+    region: singapore
+    branch: Dev
+    rootDir: services/roles
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeployTrigger: checksPass
+    buildFilter:
+      paths:
+        - services/roles/**
+        - render.yaml
+    envVars:
+      - key: NODE_VERSION
+        value: 20.19.0
+      - key: ROLE_DATABASE_URL
+        fromDatabase:
+          name: ma-soi-online-dev-role-db
+          property: connectionString
+      - key: LOBBY_SERVICE_URL
+        fromService:
+          type: web
+          name: ma-soi-online-dev-lobby
+          property: hostport
+      - fromGroup: ma-soi-online-dev-service-auth
+
+  - type: web
+    name: ma-soi-online-dev-gateway
+    runtime: node
+    plan: free
+    region: singapore
+    branch: Dev
     rootDir: backend
     buildCommand: npm ci
     startCommand: npm start
@@ -16,5 +70,37 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 20.19.0
+      - key: LOBBY_SERVICE_URL
+        fromService:
+          type: web
+          name: ma-soi-online-dev-lobby
+          property: hostport
+      - key: ROLE_SERVICE_URL
+        fromService:
+          type: web
+          name: ma-soi-online-dev-roles
+          property: hostport
       - key: CLIENT_ORIGIN
-        sync: false
+        value: https://ma-soi-online-proto1-git-dev-andt.vercel.app,http://localhost:5173,http://127.0.0.1:5173
+      - fromGroup: ma-soi-online-dev-service-auth
+
+databases:
+  - name: ma-soi-online-dev-lobby-db
+    plan: free
+    region: singapore
+    databaseName: ma_soi_lobby
+    user: ma_soi_lobby
+    ipAllowList: []
+
+  - name: ma-soi-online-dev-role-db
+    plan: free
+    region: singapore
+    databaseName: ma_soi_roles
+    user: ma_soi_roles
+    ipAllowList: []
+
+envVarGroups:
+  - name: ma-soi-online-dev-service-auth
+    envVars:
+      - key: SERVICE_AUTH_TOKEN
+        generateValue: true
