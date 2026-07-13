@@ -17,9 +17,15 @@ import {
 } from "./game-utils.js";
 import "./styles.css";
 
-function PaperShell({ children, profileName, onLeave, showHeader = true }) {
+function PaperShell({ children, profileName, onLeave, showHeader = true, phase }) {
   const profile = <><span className="profile-avatar">{playerInitial(profileName || "S")}</span><span><strong>{profileName || "Sói Già Làng"}</strong><small>{onLeave ? "Rời bàn chơi" : "Vai kín"}</small></span></>;
-  return <div className="app paper-app"><main className="game-board">
+  const atmospherePhase = phase === "night" ? "night" : "day";
+  return <div className="app paper-app"><main className={`game-board phase-${atmospherePhase}`} data-game-phase={atmospherePhase}>
+    <div className="game-atmosphere" aria-hidden="true">
+      <span className="night-village" />
+      <span className="night-wash" />
+      <span className="night-mist" />
+    </div>
     <div className="side-deck left-deck" aria-hidden="true" />
     <div className="side-deck right-deck" aria-hidden="true" />
     {showHeader && <header className="paper-topbar">{onLeave ? <button className="profile-card" type="button" onClick={onLeave}>{profile}</button> : <div className="profile-card static-profile">{profile}</div>}</header>}
@@ -217,7 +223,7 @@ function Assignment({ room, setup, catalog, modes, balanceMode, setBalanceMode, 
   const selected = new Map((setup.selectedRoles || []).map((role) => [role.id, role.quantity]));
   const fullRoleSet = setup.totalSlots === room.playerCount;
   const saved = assignments.length === room.playerCount;
-  return <PaperShell profileName={room.hostName} onLeave={onLeave}>
+  return <PaperShell profileName={room.hostName} onLeave={onLeave} phase={room.gamePhase}>
     {toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}
     <section className="assignment-screen">
       <header className="assignment-header">
@@ -276,7 +282,7 @@ function Moderator({ room, roles, assignments, catalog, onLeave, onMark, onDay, 
   // Build a map of playerId -> role object for the role roster
   const roleById = useMemo(() => new Map((catalog || []).map((r) => [r.id, r])), [catalog]);
   const assignmentMap = useMemo(() => new Map((assignments || []).map((a) => [a.playerId, roleById.get(a.roleId)])), [assignments, roleById]);
-  return <PaperShell profileName={room.hostName} onLeave={onLeave}>
+  return <PaperShell profileName={room.hostName} onLeave={onLeave} phase={room.gamePhase}>
     {toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}
     <section className="moderator-screen">
       <span className="ribbon">Kịch bản Quan Trò</span>
@@ -307,7 +313,7 @@ function GameEnded({ room, isHost, onLeave, onContinue, onDisband, processing, t
 function PlayerRole({ room, player, role, flipped, setFlipped, toast, dismissToast }) {
   const dead = player?.isAlive === false;
   if (!role) {
-    return <PaperShell profileName={player?.name || "Người chơi"}>
+    return <PaperShell profileName={player?.name || "Người chơi"} phase={room.gamePhase}>
       {toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}
       <section className="player-board-screen">
         <div className="paper-panel waiting-panel">
@@ -318,7 +324,7 @@ function PlayerRole({ room, player, role, flipped, setFlipped, toast, dismissToa
       </section>
     </PaperShell>;
   }
-  return <PaperShell profileName={player?.name || "Người chơi"}>
+  return <PaperShell profileName={player?.name || "Người chơi"} phase={room.gamePhase}>
     {toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}
     <section className="player-board-screen">
       <div className="paper-panel board-panel">
