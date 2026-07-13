@@ -37,6 +37,7 @@ services:
       PORT: 3002
       LOBBY_DATABASE_URL: postgres://ma_soi:ma_soi@lobby-db:5432/ma_soi_lobby
       SERVICE_AUTH_TOKEN: local-dev-service-token
+      GATEWAY_INTERNAL_URL: http://gateway:3001
     depends_on:
       lobby-db:
         condition: service_healthy

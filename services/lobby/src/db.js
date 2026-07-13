@@ -37,6 +37,7 @@ export async function initializeDatabase() {
     ALTER TABLE rooms ADD COLUMN IF NOT EXISTS winner TEXT;
     ALTER TABLE rooms ADD COLUMN IF NOT EXISTS end_reason TEXT;
     ALTER TABLE rooms ADD COLUMN IF NOT EXISTS ended_at TIMESTAMPTZ;
+    ALTER TABLE rooms ADD COLUMN IF NOT EXISTS phase_ends_at TIMESTAMPTZ;
 
     ALTER TABLE rooms DROP CONSTRAINT IF EXISTS rooms_status_check;
     ALTER TABLE rooms ADD CONSTRAINT rooms_status_check

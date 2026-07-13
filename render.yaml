@@ -15,6 +15,9 @@ services:
         - services/lobby/**
         - render.yaml
     envVars:
+      - key: GATEWAY_INTERNAL_URL
+        value: https://ma-soi-online-dev-gateway.onrender.com
+
       - key: NODE_VERSION
         value: 20.19.0
       - key: LOBBY_DATABASE_URL

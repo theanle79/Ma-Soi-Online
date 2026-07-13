@@ -82,15 +82,20 @@ jobs:
       - name: Start backend services
         run: docker compose up --build --detach
 
-      - name: Verify health endpoint
+      - name: Verify health endpoints
         run: |
-          for attempt in {1..30}; do
-            if curl --fail --silent --show-error http://127.0.0.1:3001/health; then
+          for attempt in {1..60}; do
+            if curl --fail --silent --show-error http://127.0.0.1:3001/health && \
+               curl --fail --silent --show-error http://127.0.0.1:3002/health && \
+               curl --fail --silent --show-error http://127.0.0.1:3003/health; then
+              echo "Tất cả các service đã sẵn sàng!"
               exit 0
             fi
+            echo "Đang đợi các service khởi động (Lần thử $attempt)..."
             sleep 2
           done
 
+          echo "Khởi động service thất bại. In log:"
           docker compose logs
           exit 1
 
