@@ -32,7 +32,7 @@ The gateway has no game database. The Role Service verifies the current roster t
 
 ## Run locally
 
-Requirements: Docker Desktop, Node.js 20.19 or newer, and npm.
+Requirements: Docker Desktop, Node.js 24.18 or newer, and npm.
 
 1. Start the two databases and three backend services.
 
