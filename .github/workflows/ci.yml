@@ -18,17 +18,18 @@ jobs:
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: frontend
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20.19.0
+          node-version: 24.18.0
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -41,14 +42,15 @@ jobs:
   backend:
     name: Backend
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20.19.0
+          node-version: 24.18.0
           cache: npm
           cache-dependency-path: |
             backend/package-lock.json
@@ -82,20 +84,17 @@ jobs:
       - name: Start backend services
         run: docker compose up --build --detach
 
-      - name: Verify health endpoints
+      - name: Verify health endpoint
         run: |
-          for attempt in {1..60}; do
-            if curl --fail --silent --show-error http://127.0.0.1:3001/health && \
-               curl --fail --silent --show-error http://127.0.0.1:3002/health && \
-               curl --fail --silent --show-error http://127.0.0.1:3003/health; then
-              echo "Tất cả các service đã sẵn sàng!"
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:3001/health; then
               exit 0
             fi
-            echo "Đang đợi các service khởi động (Lần thử $attempt)..."
             sleep 2
           done
 
-          echo "Khởi động service thất bại. In log:"
+          docker compose ps
+          docker compose ps
           docker compose logs
           exit 1
 

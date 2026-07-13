@@ -13,6 +13,8 @@ Render provisions the remaining topology from `render.yaml`:
 
 All three Node services use Render's free web-service plan. Lobby and Role Service requests require a shared generated `SERVICE_AUTH_TOKEN`; only their `/health` endpoints remain public. Service-to-service requests use the services' HTTPS URLs because Render's free-tier internal hostname route did not provide reliable connectivity for this deployment. The bearer token keeps those public service APIs protected.
 
+The services run on Node.js 24.18.0 (LTS), matching the GitHub Actions workflows.
+
 ## First deployment
 
 1. In Render, create a Blueprint from this repository and select the `Dev` branch.
