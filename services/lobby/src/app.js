@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import cors from "cors";
 import express from "express";
 import { inTransaction, pool } from "./db.js";
+import { armPhaseTimer, clearPhaseTimer, DISCUSSION_PHASE_SECONDS } from "./timer-manager.js";
 import {
   appError,
   assertHost,
@@ -33,6 +34,53 @@ async function roomSnapshot(client, idOrCode) {
     [room.id],
   );
   return mapRoom(room, players.rows);
+}
+const GATEWAY_INTERNAL_URL = String(process.env.GATEWAY_INTERNAL_URL || "http://localhost:3001")
+    .trim()
+    .replace(/\/+$/, "");
+const SERVICE_AUTH_TOKEN = process.env.SERVICE_AUTH_TOKEN || "";
+
+// Single source of truth for day -> night. Used by manual advance, GM skip, and timer expiry.
+async function transitionToNight(idOrCode, { hostId } = {}) {
+  return inTransaction(async (client) => {
+    const found = await findRoom(client, idOrCode, { lock: true });
+    if (!found) throw appError("room_not_found", "Không tìm thấy phòng.", 404);
+    if (hostId) assertHost(found, hostId);
+    assertRoomStatus(found, ["playing"]);
+    if (found.game_phase !== "day") {
+      throw appError("invalid_game_phase", "Hiện chưa phải ban ngày.", 409);
+    }
+    await client.query(
+        "UPDATE rooms SET game_phase = 'night', game_day = game_day + 1, phase_ends_at = NULL WHERE id = $1",
+        [found.id],
+    );
+    return roomSnapshot(client, found.id);
+  });
+}
+
+// Fire-and-report webhook so the Gateway can broadcast + run its win-check.
+async function notifyGateway(roomId) {
+  try {
+    const response = await fetch(`${GATEWAY_INTERNAL_URL}/internal/rooms/${roomId}/phase-expired`, {
+      method: "POST",
+      headers: SERVICE_AUTH_TOKEN ? { authorization: `Bearer ${SERVICE_AUTH_TOKEN}` } : undefined,
+    });
+    if (!response.ok) console.error(`[timer] gateway rejected phase-expired for ${roomId}: ${response.status}`);
+  } catch (error) {
+    console.error(`[timer] could not reach gateway for ${roomId}:`, error.message);
+  }
+}
+
+// Timer callback: advance the room, then let the Gateway push it to clients.
+async function handlePhaseExpiry(roomId) {
+  try {
+    await transitionToNight(roomId);
+  } catch (error) {
+    // Room already left the day phase (ended, disbanded, or GM advanced manually) — nothing to do.
+    if (["invalid_game_phase", "invalid_room_state", "room_not_found"].includes(error.code)) return;
+    throw error;
+  }
+  await notifyGateway(roomId);
 }
 
 export function createLobbyApp() {
@@ -181,10 +229,31 @@ export function createLobbyApp() {
         if (!found) throw appError("room_not_found", "Không tìm thấy phòng.", 404);
         assertHost(found, hostId);
         assertRoomStatus(found, ["assigning"]);
-        await client.query(
-          "UPDATE rooms SET status = 'playing', game_phase = 'night', game_day = 1 WHERE id = $1",
-          [found.id],
-        );
+        app.post("/rooms/:roomId/begin-day", async (req, res, next) => {
+          try {
+            const hostId = requireUuid(req.body.hostId, "Mã Quan Trò");
+            const room = await inTransaction(async (client) => {
+              const found = await findRoom(client, req.params.roomId, { lock: true });
+              if (!found) throw appError("room_not_found", "Không tìm thấy phòng.", 404);
+              assertHost(found, hostId);
+              assertRoomStatus(found, ["playing"]);
+              if (found.game_phase !== "night") throw appError("invalid_game_phase", "Hiện chưa phải ban đêm.", 409);
+              await client.query(
+                  "UPDATE participants SET is_alive = FALSE, pending_death = FALSE WHERE room_id = $1 AND pending_death = TRUE",
+                  [found.id],
+              );
+              await client.query(
+                  "UPDATE rooms SET game_phase = 'day', phase_ends_at = NOW() + make_interval(secs => $2) WHERE id = $1",
+                  [found.id, DISCUSSION_PHASE_SECONDS],
+              );
+              return roomSnapshot(client, found.id);
+            });
+            armPhaseTimer(room.id, DISCUSSION_PHASE_SECONDS, handlePhaseExpiry); // arm only after commit
+            res.json({ room });
+          } catch (error) {
+            next(error);
+          }
+        });
         return roomSnapshot(client, found.id);
       });
       res.json({ room });
@@ -263,6 +332,17 @@ export function createLobbyApp() {
         await client.query("UPDATE rooms SET game_phase = 'night', game_day = game_day + 1 WHERE id = $1", [found.id]);
         return roomSnapshot(client, found.id);
       });
+      clearPhaseTimer(room.id);
+      res.json({ room });
+    } catch (error) {
+      next(error);
+    }
+  });
+  app.post("/rooms/:roomId/skip-phase", async (req, res, next) => {
+    try {
+      const hostId = requireUuid(req.body.hostId, "Mã Quan Trò");
+      const room = await transitionToNight(req.params.roomId, { hostId });
+      clearPhaseTimer(room.id); // cancel the pending auto-expiry
       res.json({ room });
     } catch (error) {
       next(error);

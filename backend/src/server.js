@@ -121,6 +121,19 @@ app.get("/health", async (_req, res) => {
     res.status(error.status || 503).json({ status: "degraded", service: "realtime-gateway", error: error.message });
   }
 });
+app.post("/internal/rooms/:roomId/phase-expired", async (req, res) => {
+  if (SERVICE_AUTH_TOKEN && req.headers.authorization !== `Bearer ${SERVICE_AUTH_TOKEN}`) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+  try {
+    const { roomId } = req.params;
+    const { room } = await buildRoomState(roomId); // Lobby already advanced the phase; we just fan out.
+    await resolveGameAndBroadcast(roomId, room.hostId);
+    res.json({ status: "ok" });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.code || "internal_error" });
+  }
+});
 
 io.on("connection", (socket) => {
   socket.on("room:create", handle(socket, async ({ hostName, hostId }) => {
@@ -243,6 +256,12 @@ io.on("connection", (socket) => {
     const session = sessionFor(socket, { hostOnly: true });
     await lobby(`/rooms/${session.roomId}/begin-night`, { method: "POST", body: { hostId: session.actorId } });
     await broadcastRoom(session.roomId);
+  }));
+
+  socket.on("game:skip-phase", handle(socket, async () => {
+    const session = sessionFor(socket, { hostOnly: true });
+    await lobby(`/rooms/${session.roomId}/skip-phase`, { method: "POST", body: { hostId: session.actorId } });
+    await resolveGameAndBroadcast(session.roomId, session.actorId);
   }));
 
   socket.on("game:continue", handle(socket, async () => {

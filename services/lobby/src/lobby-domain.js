@@ -52,6 +52,7 @@ export function mapRoom(row, players) {
     playerCount: players.length,
     gameDay: row.game_day,
     gamePhase: row.game_phase,
+    phaseEndsAt: row.phase_ends_at,
     winner: row.winner,
     endReason: row.end_reason,
     endedAt: row.ended_at,
