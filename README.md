@@ -1,95 +1,65 @@
-# Ma Soi Online MVP
+# Làng Sói moderator kit
 
-Project skeleton for a local Ma Soi Online MVP.
+A companion tool for in-person Ma Sói games. It replaces physical role cards and the Quan Trò's paper notes while players continue discussing and voting face to face.
 
-## Stack
+## What works
 
-- Frontend: React + Vite
-- Backend: Node.js + Express
-- Real-time: Socket.io
-- Storage: in-memory rooms only
+- A Quan Trò creates a room with no player-count selector.
+- Up to 24 regular players can join. The Quan Trò is not a player and never receives a role.
+- Role assignment unlocks at 6 regular players and is enforced by Lobby Service.
+- The Quan Trò can build a role set manually or generate a new randomized set that fits the chosen Ma Sói balance range.
+- The Quan Trò can manually assign each selected role or shuffle and deal them privately.
+- Each player sees only their own role on their own device.
+- The Quan Trò receives role-specific night and day scripts, can queue overnight deaths, and can record immediate daytime deaths.
+- Classic Village, Werewolf, and Vampire victory conditions are detected from the living role assignments and end the game automatically.
+- If the Quan Trò disconnects, the room closes.
 
-## Project Structure
+## Services and data ownership
 
 ```text
-frontend/
-backend/
-  src/
-    server.js
-    rooms.js
-    roles.js
+frontend (React + Vite)
+        |
+realtime gateway (Socket.io)
+   |                    |
+Lobby Service       Role Service
+rooms, members,     role catalogue, balance,
+day and death state selected roles, assignments
+   |                    |
+Lobby PostgreSQL    Role PostgreSQL
 ```
 
-## Prerequisites
+The gateway has no game database. The Role Service verifies the current roster through Lobby Service's internal API instead of reading Lobby's database.
 
-- Node.js 20.19 or newer
-- npm
+## Run locally
 
-## Setup
+Requirements: Docker Desktop, Node.js 20.19 or newer, and npm.
 
-Install frontend dependencies:
+1. Start the two databases and three backend services.
 
-```bash
+```powershell
+docker compose up --build
+```
+
+2. In another terminal, install and run the frontend.
+
+```powershell
 cd frontend
-npm install
+npm.cmd install
+npm.cmd run dev
 ```
 
-Install backend dependencies:
+Open the local URL shown by Vite. The frontend talks to the gateway at `http://localhost:3001` by default.
 
-```bash
-cd backend
-npm install
+## Test the balance generator
+
+```powershell
+cd services/roles
+npm.cmd install
+npm.cmd test
 ```
 
-## Run Locally
+The tests confirm that generated sets have the requested player count, remain inside the selected score range, and do not repeat the immediately previous generated set.
 
-Start the backend:
+## Current boundary
 
-```bash
-cd backend
-npm run dev
-```
-
-The backend runs on `http://localhost:3001`.
-
-Start the frontend in another terminal:
-
-```bash
-cd frontend
-npm run dev
-```
-
-The frontend runs on `http://localhost:5173`.
-
-## Available Backend Endpoints
-
-- `GET /health` - backend status
-- `GET /rooms` - list in-memory rooms
-- `POST /rooms` - create an in-memory room
-
-## Notes
-
-- Game logic is intentionally not implemented yet.
-- Rooms are stored in memory and reset when the backend restarts.
-- Socket.io currently supports connection, room joining, and room leaving events for local wiring.
-
-## CI/CD
-
-GitHub Actions validates the frontend and backend for pull requests and pushes to `Dev` and `master`.
-
-- `Dev`: CI only.
-- `master`: production branch. The frontend deploys to Vercel and Render deploys the backend after GitHub checks pass.
-
-The deployed frontend is `frontend`.
-
-### One-time configuration
-
-1. Create a Render Blueprint from `render.yaml` and connect it to this GitHub repository. Set the `CLIENT_ORIGIN` value to the Vercel production URL. Keep the service at one instance while rooms use in-memory storage.
-2. In the Vercel project, set the production `VITE_API_URL` environment variable to the public Render backend URL, for example `https://your-service.onrender.com`.
-3. In the GitHub repository, add these Actions secrets:
-   - `VERCEL_TOKEN`
-   - `VERCEL_ORG_ID`
-   - `VERCEL_PROJECT_ID`
-4. Protect `master` in GitHub and require the `Frontend` and `Backend` CI checks before merging.
-
-The backend health endpoint is checked at `/health`. Deploying or restarting the Render service clears all rooms because they are intentionally stored in memory.
+This is intentionally a digital moderator kit. Authentication, matchmaking, in-app voting, chat, independent-role victory automation, and production deployment are future work.
