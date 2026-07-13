@@ -180,8 +180,8 @@ export default function App() {
   if (room.status === "waiting") return <Lobby room={room} isHost={isHost} onLeave={leaveRoom} onStart={startAssignment} onNotice={setToast} toast={toast} dismissToast={() => setToast(null)} />;
   if (room.status === "assigning" && isHost) return <Assignment room={room} setup={roleSetup} catalog={roleCatalog} modes={balanceModes} balanceMode={balanceMode} setBalanceMode={setBalanceMode} slots={manualSlots} assignments={hostAssignments} onQuantity={changeQuantity} onGenerate={() => socket.emit("roles:generate", { balanceMode, requestId: crypto.randomUUID() })} onRandom={() => socket.emit("roles:assign-random")} onSlot={(key, playerId) => setManualSlots((current) => current.map((slot) => slot.key === key ? { ...slot, playerId } : slot))} onSave={saveManual} onFinalize={() => socket.emit("roles:finalize")} onLeave={leaveRoom} toast={toast} dismissToast={() => setToast(null)} />;
   if (room.status === "assigning") return <Waiting room={room} onLeave={leaveRoom} toast={toast} dismissToast={() => setToast(null)} />;
-  if (room.status === "ended") return <GameEnded room={room} isHost={isHost} onLeave={leaveRoom} onContinue={continueSameSquad} onDisband={disbandRoom} processing={postGameAction} toast={toast} dismissToast={() => setToast(null)} />;
-  if (room.status === "playing" && isHost) return <Moderator room={room} roles={roleSetup.selectedRoles || []} onLeave={leaveRoom} onMark={(playerId, markDead) => socket.emit("game:mark-death", { playerId, markDead })} onDay={() => socket.emit("game:begin-day")} onNight={() => socket.emit("game:begin-night")} toast={toast} dismissToast={() => setToast(null)} />;
+  if (room.status === "ended") return <GameEnded room={room} isHost={isHost} onLeave={leaveRoom} toast={toast} dismissToast={() => setToast(null)} />;
+  if (room.status === "playing" && isHost) return <Moderator room={room} roles={roleSetup.selectedRoles || []} assignments={hostAssignments} catalog={roleCatalog} onLeave={leaveRoom} onMark={(playerId, markDead) => socket.emit("game:mark-death", { playerId, markDead })} onDay={() => socket.emit("game:begin-day")} onNight={() => socket.emit("game:begin-night")} toast={toast} dismissToast={() => setToast(null)} />;
   return <PlayerRole room={room} player={self} role={playerRole} flipped={flipped} setFlipped={setFlipped} toast={toast} dismissToast={() => setToast(null)} />;
 }
 
@@ -210,7 +210,7 @@ function Lobby({ room, isHost, onLeave, onStart, onNotice, toast, dismissToast }
       if (error?.name !== "AbortError") onNotice("Chưa thể chia sẻ lời mời trên thiết bị này.");
     }
   }
-  return <PaperShell profileName={isHost ? room.hostName : "Người chơi"} onLeave={onLeave}>{toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}<section className="lobby"><div className="paper-panel lobby-panel"><div className="lobby-header"><div><span className="ribbon small">Phòng chờ</span><div className="room-code-row"><h2>Phòng <span>{room.code}</span></h2><button className="copy-code-button" type="button" onClick={copyRoomCode}>Sao chép mã</button></div><p>Quan Trò: {room.hostName}</p></div><div className="lobby-actions">{isHost ? <><p className={canStart ? "status-line ready" : "status-line"}>{canStart ? "Đã đủ người chơi để phân vai." : `Cần thêm ${6 - room.playerCount} người chơi.`}</p><button className={`paper-button ${canStart ? "ready" : ""}`} type="button" disabled={!canStart} onClick={onStart}>Bắt đầu phân vai</button></> : <p>Hãy chờ Quan Trò chuẩn bị bộ vai.</p>}</div></div>{isHost && <div className="lobby-qr"><div className="qr-placeholder" aria-label="Mã QR sẽ được bổ sung sau"><strong>QR</strong><small>Sắp có</small></div><div><strong>Mời bạn bè vào phòng</strong><p>Chia sẻ đường dẫn hoặc gửi mã {room.code}. Tính năng quét QR sẽ được bổ sung sau.</p><button className="paper-button blue compact" type="button" onClick={shareRoom}>Chia sẻ lời mời</button></div></div>}<div className="host-card"><span className="player-avatar">{playerInitial(room.hostName)}</span><strong>{room.hostName}</strong><span>Quan Trò</span></div><div className="players-grid">{room.players.map((player, index) => <article className={`player-card ${player.isAlive === false ? "dead" : ""} ${player.pendingDeath ? "pending" : ""}`} key={player.id} style={{ "--i": index }}><span className="player-avatar">{playerInitial(player.name)}</span><p>{player.name}</p><span>{player.isAlive === false ? "Đã chết" : player.pendingDeath ? "Đã đánh dấu" : "Đang chơi"}</span></article>)}</div></div></section></PaperShell>;
+  return <PaperShell profileName={isHost ? room.hostName : "Người chơi"} onLeave={onLeave}>{toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}<section className="lobby"><div className="paper-panel lobby-panel"><div className="lobby-header"><div><span className="ribbon small">Phòng chờ</span><div className="room-code-row"><h2>Phòng <span>{room.code}</span></h2><button className="copy-code-button" type="button" onClick={copyRoomCode}>Sao chép mã</button></div><p>Quan Trò: {room.hostName}</p></div><div className="lobby-actions">{isHost ? <><p className={canStart ? "status-line ready" : "status-line"}>{canStart ? "Đã đủ người chơi để phân vai." : `Cần thêm ${6 - room.playerCount} người chơi.`}</p><button className={`paper-button ${canStart ? "ready" : ""}`} type="button" disabled={!canStart} onClick={onStart}>Bắt đầu phân vai</button></> : <p>Hãy chờ Quan Trò chuẩn bị bộ vai.</p>}</div></div>{isHost && <div className="lobby-qr"><div className="qr-placeholder" aria-label="Mã QR sẽ được bổ sung sau"><strong>QR</strong><small>Sắp có</small></div><div><strong>Mời bạn bè vào phòng</strong><p>Chia sẻ đường dẫn hoặc gửi mã {room.code}. Tính năng quét QR sẽ được bổ sung sau.</p><button className="paper-button blue compact" type="button" onClick={shareRoom}>Chia sẻ lời mời</button></div></div>}<div className="host-card"><span className="player-avatar">{playerInitial(room.hostName)}</span><strong>{room.hostName}</strong><span>Quan Trò</span></div><div className="players-grid">{room.players.map((player, index) => <article className={`player-card ${player.isAlive === false ? "dead" : ""} ${player.pendingDeath ? "pending" : ""}`} key={player.id} style={{ "--i": index }}><span className="player-avatar">{playerInitial(player.name)}</span><p>{player.name}</p><span className="status-label">{player.isAlive === false ? "Đã chết" : player.pendingDeath ? "Đã đánh dấu" : "Đang chơi"}</span></article>)}</div></div></section></PaperShell>;
 }
 
 function Assignment({ room, setup, catalog, modes, balanceMode, setBalanceMode, slots, assignments, onQuantity, onGenerate, onRandom, onSlot, onSave, onFinalize, onLeave, toast, dismissToast }) {
@@ -263,7 +263,7 @@ function Waiting({ room, onLeave, toast, dismissToast }) {
   return <PaperShell profileName="Người chơi" onLeave={onLeave}>{toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}<section className="ritual-screen"><div className="paper-panel waiting-panel"><div className="night-mark">☾</div><span className="ribbon blue">Đang chuẩn bị</span><h2>Quan Trò đang phân vai</h2><p>Hãy giữ thiết bị này riêng tư. Vai của bạn sẽ chỉ xuất hiện tại đây sau khi Quan Trò hoàn tất.</p><div className="role-chips">{room.players.map((player) => <span key={player.id}>{player.name}</span>)}</div></div></section></PaperShell>;
 }
 
-function Moderator({ room, roles, onLeave, onMark, onDay, onNight, toast, dismissToast }) {
+function Moderator({ room, roles, assignments, catalog, onLeave, onMark, onDay, onNight, toast, dismissToast }) {
   const night = room.gamePhase === "night";
   const scriptRoles = night
     ? roles.filter((role) => roleWakesTonight(role, room.gameDay)).sort((left, right) => left.nightOrder - right.nightOrder)
@@ -273,6 +273,9 @@ function Moderator({ room, roles, onLeave, onMark, onDay, onNight, toast, dismis
     onMark(playerId, true);
     setDayDeathCandidateId(null);
   };
+  // Build a map of playerId -> role object for the role roster
+  const roleById = useMemo(() => new Map((catalog || []).map((r) => [r.id, r])), [catalog]);
+  const assignmentMap = useMemo(() => new Map((assignments || []).map((a) => [a.playerId, roleById.get(a.roleId)])), [assignments, roleById]);
   return <PaperShell profileName={room.hostName} onLeave={onLeave}>
     {toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}
     <section className="moderator-screen">
@@ -283,8 +286,12 @@ function Moderator({ room, roles, onLeave, onMark, onDay, onNight, toast, dismis
           <h3>{night ? "Lời dẫn theo thứ tự" : "Lời dẫn ban ngày"}</h3>
           {!night && <article className="script-row featured-script"><span className="script-order">NG</span><div><strong>Mở đầu ban ngày</strong><small>Trời đã sáng, mọi người mở mắt. Những người còn sống bắt đầu thảo luận. Khi kết thúc thảo luận, làng sẽ biểu quyết một người bị nghi ngờ. Quan Trò ghi nhận kết quả trước khi chuyển sang đêm tiếp theo.</small></div></article>}
           {scriptRoles.length ? scriptRoles.map((role) => <article className="script-row" key={role.id}><span className="script-order">{night ? role.nightOrder : "!"}</span><div><strong>{role.name}{role.quantity > 1 ? ` × ${role.quantity}` : ""}</strong><small>{scriptForRole(role, room)}</small></div></article>) : night ? <p className="status-line">Đêm này không có vai nào cần thức dậy.</p> : <p className="status-line">Không có vai đặc biệt cần nhắc trong ban ngày.</p>}
+
         </div>
-        <div className="death-panel"><h3>{night ? "Ghi nhận trong đêm" : "Ghi nhận ban ngày"}</h3><p className="death-panel-note">{night ? "Các đánh dấu này sẽ được công bố khi mở ban ngày." : "Dùng sau bỏ phiếu hoặc năng lực ban ngày. Xác nhận sẽ cập nhật ngay trên thiết bị của người chơi."}</p><div className="death-roster">{room.players.map((player) => <article className={`player-card ${player.isAlive === false ? "dead" : ""}`} key={player.id}><span className="player-avatar">{playerInitial(player.name)}</span><p>{player.name}</p><span>{player.isAlive === false ? "Đã chết" : player.pendingDeath ? "Đã đánh dấu" : "Đang chơi"}</span>{night && player.isAlive && <button className={`mark-death ${player.pendingDeath ? "marked" : ""}`} type="button" onClick={() => onMark(player.id, !player.pendingDeath)}>{player.pendingDeath ? "Bỏ đánh dấu" : "Chết khi sáng"}</button>}{!night && player.isAlive && (dayDeathCandidateId === player.id ? <span className="day-death-confirm"><span>Xác nhận đã chết?</span><button className="mark-death marked" type="button" onClick={() => confirmDayDeath(player.id)}>Xác nhận</button><button className="mark-death" type="button" onClick={() => setDayDeathCandidateId(null)}>Hủy</button></span> : <button className="mark-death day" type="button" onClick={() => setDayDeathCandidateId(player.id)}>Ghi nhận đã chết</button>)}</article>)}</div></div>
+        <div className="death-panel"><h3>{night ? "Ghi nhận trong đêm" : "Ghi nhận ban ngày"}</h3><p className="death-panel-note">{night ? "Các đánh dấu này sẽ được công bố khi mở ban ngày." : "Dùng sau bỏ phiếu hoặc năng lực ban ngày. Xác nhận sẽ cập nhật ngay trên thiết bị của người chơi."}</p><div className="death-roster">{room.players.map((player) => {
+          const role = assignmentMap.get(player.id);
+          return <article className={`player-card ${player.isAlive === false ? "dead" : ""} team-${role?.team || "unknown"}`} key={player.id}><span className="player-avatar">{playerInitial(player.name)}</span><div className="player-info-col"><p>{player.name}</p>{role ? <div className="player-card-role"><span className="roster-role-name">{role.name}</span><span className={`roster-team-badge team-${role.team}`}>{TEAM_LABELS[role.team] || role.team}</span></div> : <span className="roster-role-name muted">Chưa có vai</span>}<span className="status-label">{player.isAlive === false ? "Đã chết" : player.pendingDeath ? "Đã đánh dấu" : "Đang chơi"}</span></div>{night && player.isAlive && <button className={`mark-death ${player.pendingDeath ? "marked" : ""}`} type="button" onClick={() => onMark(player.id, !player.pendingDeath)}>{player.pendingDeath ? "Bỏ đánh dấu" : "Chết khi sáng"}</button>}{!night && player.isAlive && (dayDeathCandidateId === player.id ? <span className="day-death-confirm"><span>Xác nhận đã chết?</span><button className="mark-death marked" type="button" onClick={() => confirmDayDeath(player.id)}>Xác nhận</button><button className="mark-death" type="button" onClick={() => setDayDeathCandidateId(null)}>Hủy</button></span> : <button className="mark-death day" type="button" onClick={() => setDayDeathCandidateId(player.id)}>Ghi nhận đã chết</button>)}</article>
+        })}</div></div>
       </div>
     </section>
   </PaperShell>;
@@ -299,5 +306,61 @@ function GameEnded({ room, isHost, onLeave, onContinue, onDisband, processing, t
 
 function PlayerRole({ room, player, role, flipped, setFlipped, toast, dismissToast }) {
   const dead = player?.isAlive === false;
-  return <PaperShell profileName={player?.name || "Người chơi"}>{toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}<section className="role-reveal">{!role ? <div className="paper-panel waiting-panel"><div className="night-mark">☾</div><h2>Đang nhận vai</h2><p>Quan Trò đã bắt đầu ván chơi. Vai của bạn sẽ hiện ngay khi hệ thống hoàn tất bảo mật.</p></div> : <><button className={`role-card-wrapper ${flipped ? "flipped" : ""}`} type="button" onClick={() => setFlipped(!flipped)}><span className="role-card-inner"><span className="role-card-front"><span>Chạm để lật bài</span></span><span className="role-card-back"><span className="role-card-icon">◉</span><strong>{role.name}</strong><small>{TEAM_LABELS[role.team]}</small><span>{role.ability}</span></span></span></button><p className="role-status">{room.gamePhase === "day" ? `Ngày ${room.gameDay}` : `Đêm ${room.gameDay}`} · Chỉ bạn có thể xem lá bài này.</p>{dead && <p className="death-notice">Bạn đã chết. Hãy giữ im lặng và chờ ván tiếp tục.</p>}</>}</section></PaperShell>;
+  if (!role) {
+    return <PaperShell profileName={player?.name || "Người chơi"}>
+      {toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}
+      <section className="player-board-screen">
+        <div className="paper-panel waiting-panel">
+          <div className="night-mark">☾</div>
+          <h2>Đang nhận vai</h2>
+          <p>Quan Trò đã bắt đầu ván chơi. Vai của bạn sẽ hiện ngay khi hệ thống hoàn tất bảo mật.</p>
+        </div>
+      </section>
+    </PaperShell>;
+  }
+  return <PaperShell profileName={player?.name || "Người chơi"}>
+    {toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}
+    <section className="player-board-screen">
+      <div className="paper-panel board-panel">
+        <div className="board-panel-header">
+          <div>
+            <h3>Bàn chơi</h3>
+            <p className="board-panel-note">
+              {room.gamePhase === "day" ? `Ngày ${room.gameDay}` : `Đêm ${room.gameDay}`} · Bạn là {role.name}.
+            </p>
+          </div>
+          {dead && <span className="death-notice inline">Bạn đã chết.</span>}
+        </div>
+        <div className="death-roster player-view-roster">
+          {room.players.map((p) => {
+            const isSelf = p.id === player?.id;
+            const isDead = p.isAlive === false;
+            return (
+              <article className={`player-card ${isDead ? "dead" : ""} ${isSelf ? `team-${role.team}` : ""}`} key={p.id}>
+                <span className="player-avatar">{playerInitial(p.name)}</span>
+                <div className="player-info-col">
+                  <p>{p.name}{isSelf ? " (Bạn)" : ""}</p>
+                  {isSelf && !flipped && (
+                    <div className="player-card-role"><span className="roster-role-name">{role.name}</span><span className={`roster-team-badge team-${role.team}`}>{TEAM_LABELS[role.team] || role.team}</span></div>
+                  )}
+                  {isSelf && !flipped && role.ability && (
+                    <span className="roster-ability small-ability">{role.ability}</span>
+                  )}
+                  {isSelf && flipped && (
+                    <span className="roster-role-name muted">Vai đã được ẩn</span>
+                  )}
+                  <span className="status-label">{isDead ? "Đã chết" : "Đang chơi"}</span>
+                </div>
+                {isSelf && (
+                  <button className="reveal-toggle inline-toggle" type="button" onClick={() => setFlipped(!flipped)}>
+                    {flipped ? "Hiện" : "Ẩn"}
+                  </button>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  </PaperShell>;
 }
