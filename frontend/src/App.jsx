@@ -17,9 +17,15 @@ import {
 } from "./game-utils.js";
 import "./styles.css";
 
-function PaperShell({ children, profileName, onLeave, showHeader = true }) {
+function PaperShell({ children, profileName, onLeave, showHeader = true, phase }) {
   const profile = <><span className="profile-avatar">{playerInitial(profileName || "S")}</span><span><strong>{profileName || "Sói Già Làng"}</strong><small>{onLeave ? "Rời bàn chơi" : "Vai kín"}</small></span></>;
-  return <div className="app paper-app"><main className="game-board">
+  const atmospherePhase = phase === "night" ? "night" : "day";
+  return <div className="app paper-app"><main className={`game-board phase-${atmospherePhase}`} data-game-phase={atmospherePhase}>
+    <div className="game-atmosphere" aria-hidden="true">
+      <span className="night-village" />
+      <span className="night-wash" />
+      <span className="night-mist" />
+    </div>
     <div className="side-deck left-deck" aria-hidden="true" />
     <div className="side-deck right-deck" aria-hidden="true" />
     {showHeader && <header className="paper-topbar">{onLeave ? <button className="profile-card" type="button" onClick={onLeave}>{profile}</button> : <div className="profile-card static-profile">{profile}</div>}</header>}
@@ -217,7 +223,7 @@ function Assignment({ room, setup, catalog, modes, balanceMode, setBalanceMode, 
   const selected = new Map((setup.selectedRoles || []).map((role) => [role.id, role.quantity]));
   const fullRoleSet = setup.totalSlots === room.playerCount;
   const saved = assignments.length === room.playerCount;
-  return <PaperShell profileName={room.hostName} onLeave={onLeave}>
+  return <PaperShell profileName={room.hostName} onLeave={onLeave} phase={room.gamePhase}>
     {toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}
     <section className="assignment-screen">
       <header className="assignment-header">
@@ -273,7 +279,7 @@ function Moderator({ room, roles, onLeave, onMark, onDay, onNight, toast, dismis
     onMark(playerId, true);
     setDayDeathCandidateId(null);
   };
-  return <PaperShell profileName={room.hostName} onLeave={onLeave}>
+  return <PaperShell profileName={room.hostName} onLeave={onLeave} phase={room.gamePhase}>
     {toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}
     <section className="moderator-screen">
       <span className="ribbon">Kịch bản Quan Trò</span>
@@ -299,5 +305,5 @@ function GameEnded({ room, isHost, onLeave, onContinue, onDisband, processing, t
 
 function PlayerRole({ room, player, role, flipped, setFlipped, toast, dismissToast }) {
   const dead = player?.isAlive === false;
-  return <PaperShell profileName={player?.name || "Người chơi"}>{toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}<section className="role-reveal">{!role ? <div className="paper-panel waiting-panel"><div className="night-mark">☾</div><h2>Đang nhận vai</h2><p>Quan Trò đã bắt đầu ván chơi. Vai của bạn sẽ hiện ngay khi hệ thống hoàn tất bảo mật.</p></div> : <><button className={`role-card-wrapper ${flipped ? "flipped" : ""}`} type="button" onClick={() => setFlipped(!flipped)}><span className="role-card-inner"><span className="role-card-front"><span>Chạm để lật bài</span></span><span className="role-card-back"><span className="role-card-icon">◉</span><strong>{role.name}</strong><small>{TEAM_LABELS[role.team]}</small><span>{role.ability}</span></span></span></button><p className="role-status">{room.gamePhase === "day" ? `Ngày ${room.gameDay}` : `Đêm ${room.gameDay}`} · Chỉ bạn có thể xem lá bài này.</p>{dead && <p className="death-notice">Bạn đã chết. Hãy giữ im lặng và chờ ván tiếp tục.</p>}</>}</section></PaperShell>;
+  return <PaperShell profileName={player?.name || "Người chơi"} phase={room.gamePhase}>{toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}<section className="role-reveal">{!role ? <div className="paper-panel waiting-panel"><div className="night-mark">☾</div><h2>Đang nhận vai</h2><p>Quan Trò đã bắt đầu ván chơi. Vai của bạn sẽ hiện ngay khi hệ thống hoàn tất bảo mật.</p></div> : <><button className={`role-card-wrapper ${flipped ? "flipped" : ""}`} type="button" onClick={() => setFlipped(!flipped)}><span className="role-card-inner"><span className="role-card-front"><span>Chạm để lật bài</span></span><span className="role-card-back"><span className="role-card-icon">◉</span><strong>{role.name}</strong><small>{TEAM_LABELS[role.team]}</small><span>{role.ability}</span></span></span></button><p className="role-status">{room.gamePhase === "day" ? `Ngày ${room.gameDay}` : `Đêm ${room.gameDay}`} · Chỉ bạn có thể xem lá bài này.</p>{dead && <p className="death-notice">Bạn đã chết. Hãy giữ im lặng và chờ ván tiếp tục.</p>}</>}</section></PaperShell>;
 }
