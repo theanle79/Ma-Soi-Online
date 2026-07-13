@@ -229,31 +229,10 @@ export function createLobbyApp() {
         if (!found) throw appError("room_not_found", "Không tìm thấy phòng.", 404);
         assertHost(found, hostId);
         assertRoomStatus(found, ["assigning"]);
-        app.post("/rooms/:roomId/begin-day", async (req, res, next) => {
-          try {
-            const hostId = requireUuid(req.body.hostId, "Mã Quan Trò");
-            const room = await inTransaction(async (client) => {
-              const found = await findRoom(client, req.params.roomId, { lock: true });
-              if (!found) throw appError("room_not_found", "Không tìm thấy phòng.", 404);
-              assertHost(found, hostId);
-              assertRoomStatus(found, ["playing"]);
-              if (found.game_phase !== "night") throw appError("invalid_game_phase", "Hiện chưa phải ban đêm.", 409);
-              await client.query(
-                  "UPDATE participants SET is_alive = FALSE, pending_death = FALSE WHERE room_id = $1 AND pending_death = TRUE",
-                  [found.id],
-              );
-              await client.query(
-                  "UPDATE rooms SET game_phase = 'day', phase_ends_at = NOW() + make_interval(secs => $2) WHERE id = $1",
-                  [found.id, DISCUSSION_PHASE_SECONDS],
-              );
-              return roomSnapshot(client, found.id);
-            });
-            armPhaseTimer(room.id, DISCUSSION_PHASE_SECONDS, handlePhaseExpiry); // arm only after commit
-            res.json({ room });
-          } catch (error) {
-            next(error);
-          }
-        });
+        await client.query(
+          "UPDATE rooms SET status = 'playing', game_phase = 'night', game_day = 1, phase_ends_at = NULL WHERE id = $1",
+          [found.id],
+        );
         return roomSnapshot(client, found.id);
       });
       res.json({ room });
@@ -311,9 +290,13 @@ export function createLobbyApp() {
           "UPDATE participants SET is_alive = FALSE, pending_death = FALSE WHERE room_id = $1 AND pending_death = TRUE",
           [found.id],
         );
-        await client.query("UPDATE rooms SET game_phase = 'day' WHERE id = $1", [found.id]);
+        await client.query(
+          "UPDATE rooms SET game_phase = 'day', phase_ends_at = NOW() + make_interval(secs => $2) WHERE id = $1",
+          [found.id, DISCUSSION_PHASE_SECONDS],
+        );
         return roomSnapshot(client, found.id);
       });
+      armPhaseTimer(room.id, DISCUSSION_PHASE_SECONDS, handlePhaseExpiry);
       res.json({ room });
     } catch (error) {
       next(error);
