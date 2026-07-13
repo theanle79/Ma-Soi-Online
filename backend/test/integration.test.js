@@ -7,7 +7,7 @@ const gatewayUrl = process.env.GATEWAY_URL || "http://localhost:3001";
 const lobbyUrl = process.env.LOBBY_URL || "http://localhost:3002";
 const roleUrl = process.env.ROLE_URL || "http://localhost:3003";
 const serviceToken = process.env.SERVICE_AUTH_TOKEN || "local-dev-service-token";
-const timeout = 30_000;
+const timeout = 60_000;
 
 function connectClient() {
   return new Promise((resolve, reject) => {
