@@ -46,13 +46,16 @@ jobs:
         run: npm install --global vercel@55.0.0
 
       - name: Pull Vercel production settings
+        working-directory: .
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Build deployment output
-        run: PATH="$PWD/node_modules/.bin:$PATH" vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        working-directory: .
+        run: PATH="$PWD/frontend/node_modules/.bin:$PATH" vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Deploy production build
         id: deploy
+        working-directory: .
         run: |
           deployment_url="$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})"
           echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
