@@ -1,19 +1,15 @@
 {
-  "name": "ma-soi-realtime-gateway",
-  "version": "1.0.0",
+  "name": "ma-soi-online-backend",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "node --watch src/server.js",
-    "start": "node src/server.js",
-    "test:integration": "node --test test/integration.test.js"
+    "start": "node src/server.js"
   },
   "dependencies": {
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "socket.io": "^4.8.3"
-  },
-  "devDependencies": {
-    "socket.io-client": "^4.8.3"
   }
 }
