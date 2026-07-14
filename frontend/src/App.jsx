@@ -223,6 +223,15 @@ function Assignment({ room, setup, catalog, modes, balanceMode, setBalanceMode, 
   const selected = new Map((setup.selectedRoles || []).map((role) => [role.id, role.quantity]));
   const fullRoleSet = setup.totalSlots === room.playerCount;
   const saved = assignments.length === room.playerCount;
+  const [expandedRoleIds, setExpandedRoleIds] = useState(new Set());
+  const toggleRoleDesc = (roleId) => {
+    setExpandedRoleIds(prev => {
+      const next = new Set(prev);
+      if (next.has(roleId)) next.delete(roleId);
+      else next.add(roleId);
+      return next;
+    });
+  };
   return <PaperShell profileName={room.hostName} onLeave={onLeave} phase={room.gamePhase}>
     {toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}
     <section className="assignment-screen">
@@ -247,7 +256,7 @@ function Assignment({ room, setup, catalog, modes, balanceMode, setBalanceMode, 
             <h4>{TEAM_LABELS[team]}</h4>
             {catalog.filter((role) => role.team === team).map((role) => {
               const quantity = selected.get(role.id) || 0;
-              return <div className="role-row" key={role.id}><div><strong>{role.name}</strong><small>{formatScore(role.value)} điểm {role.recommended ? " · Gợi ý" : ""}</small></div><div className="quantity-stepper"><button type="button" aria-label={`Giảm ${role.name}`} disabled={!quantity} onClick={() => onQuantity(role.id, -1)}>−</button><span>{quantity}</span><button type="button" aria-label={`Tăng ${role.name}`} disabled={setup.totalSlots >= room.playerCount || quantity >= role.max} onClick={() => onQuantity(role.id, 1)}>+</button></div></div>;
+              return <div className="role-row" key={role.id}><div><strong>{role.name}</strong><small>{formatScore(role.value)} điểm {role.recommended ? " · Gợi ý" : ""}</small><button className="text-link" type="button" style={{fontSize: "0.8em", padding: 0, marginTop: "4px"}} onClick={() => toggleRoleDesc(role.id)}>{expandedRoleIds.has(role.id) ? "Ẩn mô tả" : "Hiện mô tả"}</button>{expandedRoleIds.has(role.id) && <div className="roster-ability small-ability" style={{marginTop: "4px"}}>{role.ability}</div>}</div><div className="quantity-stepper"><button type="button" aria-label={`Giảm ${role.name}`} disabled={!quantity} onClick={() => onQuantity(role.id, -1)}>−</button><span>{quantity}</span><button type="button" aria-label={`Tăng ${role.name}`} disabled={setup.totalSlots >= room.playerCount || quantity >= role.max} onClick={() => onQuantity(role.id, 1)}>+</button></div></div>;
             })}
           </div>)}
         </aside>
@@ -279,6 +288,15 @@ function Moderator({ room, roles, assignments, catalog, onLeave, onMark, onDay, 
     onMark(playerId, true);
     setDayDeathCandidateId(null);
   };
+  const [expandedRoleIds, setExpandedRoleIds] = useState(new Set());
+  const toggleRoleDesc = (playerId) => {
+    setExpandedRoleIds(prev => {
+      const next = new Set(prev);
+      if (next.has(playerId)) next.delete(playerId);
+      else next.add(playerId);
+      return next;
+    });
+  };
   // Build a map of playerId -> role object for the role roster
   const roleById = useMemo(() => new Map((catalog || []).map((r) => [r.id, r])), [catalog]);
   const assignmentMap = useMemo(() => new Map((assignments || []).map((a) => [a.playerId, roleById.get(a.roleId)])), [assignments, roleById]);
@@ -296,7 +314,7 @@ function Moderator({ room, roles, assignments, catalog, onLeave, onMark, onDay, 
         </div>
         <div className="death-panel"><h3>{night ? "Ghi nhận trong đêm" : "Ghi nhận ban ngày"}</h3><p className="death-panel-note">{night ? "Các đánh dấu này sẽ được công bố khi mở ban ngày." : "Dùng sau bỏ phiếu hoặc năng lực ban ngày. Xác nhận sẽ cập nhật ngay trên thiết bị của người chơi."}</p><div className="death-roster">{room.players.map((player) => {
           const role = assignmentMap.get(player.id);
-          return <article className={`player-card ${player.isAlive === false ? "dead" : ""} team-${role?.team || "unknown"}`} key={player.id}><span className="player-avatar">{playerInitial(player.name)}</span><div className="player-info-col"><p>{player.name}</p>{role ? <div className="player-card-role"><span className="roster-role-name">{role.name}</span><span className={`roster-team-badge team-${role.team}`}>{TEAM_LABELS[role.team] || role.team}</span></div> : <span className="roster-role-name muted">Chưa có vai</span>}<span className="status-label">{player.isAlive === false ? "Đã chết" : player.pendingDeath ? "Đã đánh dấu" : "Đang chơi"}</span></div>{night && player.isAlive && <button className={`mark-death ${player.pendingDeath ? "marked" : ""}`} type="button" onClick={() => onMark(player.id, !player.pendingDeath)}>{player.pendingDeath ? "Bỏ đánh dấu" : "Chết khi sáng"}</button>}{!night && player.isAlive && (dayDeathCandidateId === player.id ? <span className="day-death-confirm"><span>Xác nhận đã chết?</span><button className="mark-death marked" type="button" onClick={() => confirmDayDeath(player.id)}>Xác nhận</button><button className="mark-death" type="button" onClick={() => setDayDeathCandidateId(null)}>Hủy</button></span> : <button className="mark-death day" type="button" onClick={() => setDayDeathCandidateId(player.id)}>Ghi nhận đã chết</button>)}</article>
+          return <article className={`player-card ${player.isAlive === false ? "dead" : ""} team-${role?.team || "unknown"}`} key={player.id}><span className="player-avatar">{playerInitial(player.name)}</span><div className="player-info-col"><p>{player.name}</p>{role ? <div className="player-card-role"><span className="roster-role-name">{role.name}</span><span className={`roster-team-badge team-${role.team}`}>{TEAM_LABELS[role.team] || role.team}</span></div> : <span className="roster-role-name muted">Chưa có vai</span>}{role && expandedRoleIds.has(player.id) && <span className="roster-ability small-ability">{role.ability}</span>}<span className="status-label">{player.isAlive === false ? "Đã chết" : player.pendingDeath ? "Đã đánh dấu" : "Đang chơi"}</span></div>{night && player.isAlive && <button className={`mark-death ${player.pendingDeath ? "marked" : ""}`} type="button" onClick={() => onMark(player.id, !player.pendingDeath)}>{player.pendingDeath ? "Bỏ đánh dấu" : "Chết khi sáng"}</button>}{!night && player.isAlive && (dayDeathCandidateId === player.id ? <span className="day-death-confirm"><span>Xác nhận đã chết?</span><button className="mark-death marked" type="button" onClick={() => confirmDayDeath(player.id)}>Xác nhận</button><button className="mark-death" type="button" onClick={() => setDayDeathCandidateId(null)}>Hủy</button></span> : <button className="mark-death day" type="button" onClick={() => setDayDeathCandidateId(player.id)}>Ghi nhận đã chết</button>)}{role && <button className="reveal-toggle inline-toggle" style={{marginTop: "8px"}} type="button" onClick={() => toggleRoleDesc(player.id)}>{expandedRoleIds.has(player.id) ? "Ẩn mô tả vai" : "Hiện mô tả vai"}</button>}</article>
         })}</div></div>
       </div>
     </section>
@@ -312,6 +330,7 @@ function GameEnded({ room, isHost, onLeave, onContinue, onDisband, processing, t
 
 function PlayerRole({ room, player, role, flipped, setFlipped, toast, dismissToast }) {
   const dead = player?.isAlive === false;
+  const [showAbility, setShowAbility] = useState(false);
   if (!role) {
     return <PaperShell profileName={player?.name || "Người chơi"} phase={room.gamePhase}>
       {toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}
@@ -349,7 +368,7 @@ function PlayerRole({ room, player, role, flipped, setFlipped, toast, dismissToa
                   {isSelf && !flipped && (
                     <div className="player-card-role"><span className="roster-role-name">{role.name}</span><span className={`roster-team-badge team-${role.team}`}>{TEAM_LABELS[role.team] || role.team}</span></div>
                   )}
-                  {isSelf && !flipped && role.ability && (
+                  {isSelf && !flipped && showAbility && role.ability && (
                     <span className="roster-ability small-ability">{role.ability}</span>
                   )}
                   {isSelf && flipped && (
@@ -357,9 +376,14 @@ function PlayerRole({ room, player, role, flipped, setFlipped, toast, dismissToa
                   )}
                   <span className="status-label">{isDead ? "Đã chết" : "Đang chơi"}</span>
                 </div>
+                {isSelf && !flipped && role.ability && (
+                  <button className="reveal-toggle inline-toggle" style={{marginTop: "8px"}} type="button" onClick={() => setShowAbility(!showAbility)}>
+                    {showAbility ? "Ẩn mô tả vai" : "Hiện mô tả vai"}
+                  </button>
+                )}
                 {isSelf && (
-                  <button className="reveal-toggle inline-toggle" type="button" onClick={() => setFlipped(!flipped)}>
-                    {flipped ? "Hiện" : "Ẩn"}
+                  <button className="reveal-toggle inline-toggle" style={{marginTop: "8px"}} type="button" onClick={() => { setFlipped(!flipped); setShowAbility(false); }}>
+                    {flipped ? "Hiện thẻ vai" : "Ẩn thẻ vai"}
                   </button>
                 )}
               </article>
