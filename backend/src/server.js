@@ -121,14 +121,27 @@ app.get("/health", async (_req, res) => {
     res.status(error.status || 503).json({ status: "degraded", service: "realtime-gateway", error: error.message });
   }
 });
-app.post("/internal/rooms/:roomId/phase-expired", async (req, res) => {
+app.post("/internal/rooms/:roomId/:event", async (req, res) => {
   if (SERVICE_AUTH_TOKEN && req.headers.authorization !== `Bearer ${SERVICE_AUTH_TOKEN}`) {
     return res.status(401).json({ error: "unauthorized" });
   }
   try {
-    const { roomId } = req.params;
-    const { room } = await buildRoomState(roomId); // Lobby already advanced the phase; we just fan out.
-    await resolveGameAndBroadcast(roomId, room.hostId);
+    const { roomId, event } = req.params;
+    const payload = req.body || {};
+
+    if (event === "phase-expired") {
+      const { room } = await buildRoomState(roomId);
+      await resolveGameAndBroadcast(roomId, room.hostId);
+    } else if (event === "room:closed") {
+
+      await emitRoomClosed(roomId, payload.reason || "Phòng đã bị đóng do Quản Trò mất kết nối.");
+    } else {
+      io.to(roomId).emit(event, payload);
+
+      if (event === "player:left") {
+        await broadcastRoom(roomId);
+      }
+    }
     res.json({ status: "ok" });
   } catch (error) {
     res.status(error.status || 500).json({ error: error.code || "internal_error" });
@@ -157,6 +170,8 @@ io.on("connection", (socket) => {
   }));
 
   socket.on("room:resume", handle(socket, async ({ roomId, actorId }) => {
+    await lobby(`/internal/rooms/${roomId}/players/${actorId}/reconnect`, { method: "POST" });
+
     const state = await buildRoomState(roomId);
     const isHost = state.room.hostId === actorId;
     const isPlayer = state.room.players.some((player) => player.id === actorId);
@@ -291,8 +306,18 @@ io.on("connection", (socket) => {
     await broadcastRoom(session.roomId);
   }));
 
-  socket.on("disconnecting", () => {
+  socket.on("disconnecting", async () => {
+    const session = sessions.get(socket.id);
     sessions.delete(socket.id);
+
+    if (session) {
+      try {
+        await lobby(`/internal/rooms/${session.roomId}/players/${session.actorId}/disconnect`, { method: "POST" });
+        console.log(`[Gateway] Phát hiện rớt mạng: User ${session.actorId} (Room: ${session.roomId})`);
+      } catch (error) {
+        console.error(`[Gateway] Lỗi gọi Lobby khi ngắt kết nối: ${error.message}`);
+      }
+    }
   });
 });
 
