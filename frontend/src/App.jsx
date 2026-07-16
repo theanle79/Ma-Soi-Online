@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
+import { assignPlayerToSlot } from "./assignment-utils.js";
 import {
   API_URL,
   buildSlots,
@@ -191,7 +192,7 @@ export default function App() {
   }
 
   if (room.status === "waiting") return <Lobby room={room} isHost={isHost} onLeave={leaveRoom} onStart={startAssignment} onNotice={setToast} toast={toast} dismissToast={() => setToast(null)} />;
-  if (room.status === "assigning" && isHost) return <Assignment room={room} setup={roleSetup} catalog={roleCatalog} modes={balanceModes} balanceMode={balanceMode} setBalanceMode={setBalanceMode} slots={manualSlots} assignments={hostAssignments} onQuantity={changeQuantity} onGenerate={() => socket.emit("roles:generate", { balanceMode, requestId: crypto.randomUUID() })} onRandom={() => socket.emit("roles:assign-random")} onSlot={(key, playerId) => setManualSlots((current) => current.map((slot) => slot.key === key ? { ...slot, playerId } : slot))} onSave={saveManual} onFinalize={() => socket.emit("roles:finalize")} onLeave={leaveRoom} toast={toast} dismissToast={() => setToast(null)} />;
+  if (room.status === "assigning" && isHost) return <Assignment room={room} setup={roleSetup} catalog={roleCatalog} modes={balanceModes} balanceMode={balanceMode} setBalanceMode={setBalanceMode} slots={manualSlots} assignments={hostAssignments} onQuantity={changeQuantity} onGenerate={() => socket.emit("roles:generate", { balanceMode, requestId: crypto.randomUUID() })} onRandom={() => socket.emit("roles:assign-random")} onSlot={(key, playerId) => setManualSlots((current) => assignPlayerToSlot(current, key, playerId))} onSave={saveManual} onFinalize={() => socket.emit("roles:finalize")} onLeave={leaveRoom} toast={toast} dismissToast={() => setToast(null)} />;
   if (room.status === "assigning") return <Waiting room={room} onLeave={leaveRoom} toast={toast} dismissToast={() => setToast(null)} />;
   if (room.status === "ended") return <GameEnded room={room} summary={postGameSummary} isHost={isHost} onLeave={leaveRoom} onContinue={continueSameSquad} onDisband={disbandRoom} processing={postGameAction} toast={toast} dismissToast={() => setToast(null)} />;
   if (room.status === "playing" && isHost) return <Moderator room={room} roles={roleSetup.selectedRoles || []} assignments={hostAssignments} catalog={roleCatalog} onLeave={leaveRoom} onMark={(playerId, markDead) => socket.emit("game:mark-death", { playerId, markDead })} onDay={() => socket.emit("game:begin-day")} onNight={() => socket.emit("game:begin-night")} toast={toast} dismissToast={() => setToast(null)} />;
@@ -261,8 +262,7 @@ function Assignment({ room, setup, catalog, modes, balanceMode, setBalanceMode, 
         <section className="deal-panel">
           <div className="deal-panel-head"><div><h3>Gán vai</h3><p>Chia ngẫu nhiên hoặc chọn từng người.</p></div><button className="paper-button blue compact" type="button" disabled={!fullRoleSet} onClick={onRandom}>Trộn và chia vai</button></div>
           {slots.length ? <div className="assignment-slots">{slots.map((slot) => {
-            const inUse = new Set(slots.filter((other) => other.key !== slot.key && other.playerId).map((other) => other.playerId));
-            return <label className="assignment-slot" key={slot.key}><strong>{slot.role.name}</strong><select value={slot.playerId} onChange={(event) => onSlot(slot.key, event.target.value)}><option value="">Chọn người chơi</option>{room.players.map((player) => <option value={player.id} key={player.id} disabled={inUse.has(player.id)}>{player.name}</option>)}</select></label>;
+            return <label className="assignment-slot" key={slot.key}><strong>{slot.role.name}</strong><select value={slot.playerId} onChange={(event) => onSlot(slot.key, event.target.value)}><option value="">Chọn người chơi</option>{room.players.map((player) => <option value={player.id} key={player.id}>{player.name}</option>)}</select></label>;
           })}</div> : <div className="empty-state">Chọn đủ số vai bằng số người chơi để mở bàn phân vai.</div>}
           <div className="assignment-actions"><button className="paper-button neutral compact" type="button" disabled={!slots.length || slots.some((slot) => !slot.playerId)} onClick={onSave}>Lưu gán thủ công</button><button className="paper-button compact" type="button" disabled={!saved} onClick={onFinalize}>Bắt đầu đêm 1</button></div>
           <p className="assignment-note">Trộn và chia vai tạo một lượt phân vai ngẫu nhiên. Bấm lại để trộn lượt mới.</p>
