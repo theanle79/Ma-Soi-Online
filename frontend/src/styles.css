@@ -3436,3 +3436,442 @@ body {
         transition: none
     }
 }
+
+/* Compact live moderator controls. The phase action and both views stay within
+   thumb reach without changing any game events or player-state logic. */
+.game-board:has(.moderator-screen) {
+    overflow: clip
+}
+
+.moderator-screen {
+    max-width: 1080px;
+    padding-top: 10px;
+    overflow-x: clip
+}
+
+.moderator-command-bar {
+    z-index: 20;
+    position: sticky;
+    top: max(0px, env(safe-area-inset-top));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, .55fr);
+    gap: 10px;
+    margin: 0 0 14px;
+    padding: 9px;
+    border: 3px solid var(--line);
+    border-radius: 16px;
+    background: linear-gradient(135deg, #fff5d8f7, #e8c78ff7);
+    box-shadow: 0 7px 0 #37220e38, 0 12px 25px #37220e24
+}
+
+.moderator-phase-row {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px
+}
+
+.moderator-phase-title {
+    min-width: 0;
+    padding-left: 3px
+}
+
+.moderator-phase-title>span {
+    display: block;
+    color: var(--ink-blue-dark);
+    font-size: .66rem;
+    font-weight: 900;
+    letter-spacing: .08em;
+    line-height: 1.2;
+    text-transform: uppercase
+}
+
+.moderator-phase-title h2 {
+    margin: 2px 0 0;
+    font-family: var(--font-display);
+    font-size: clamp(1.2rem, 3vw, 1.65rem);
+    line-height: 1.05
+}
+
+.moderator-phase-action {
+    flex: 0 0 auto;
+    min-height: 44px;
+    max-width: 210px;
+    padding: 9px 14px;
+    font-size: .8rem;
+    touch-action: manipulation
+}
+
+.moderator-tabs {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+    padding: 4px;
+    border: 2px solid var(--line-soft);
+    border-radius: 12px;
+    background: #fff2cd91
+}
+
+.moderator-tabs button {
+    min-width: 0;
+    min-height: 44px;
+    border: 0;
+    border-radius: 8px;
+    color: var(--ink-soft);
+    background: transparent;
+    cursor: pointer;
+    font-family: var(--font-display);
+    font-size: .8rem;
+    font-weight: 900;
+    touch-action: manipulation;
+    transition: background-color .16s ease, color .16s ease, box-shadow .16s ease
+}
+
+.moderator-tabs button:hover,
+.moderator-tabs button:active {
+    background: #fff8e0d1
+}
+
+.moderator-tabs button.active {
+    color: #fff2c5;
+    background: var(--ink-blue);
+    box-shadow: inset 0 0 0 2px #fff2c538, 0 3px 0 #153b5152
+}
+
+.moderator-tabs button>span {
+    display: inline-grid;
+    place-items: center;
+    min-width: 22px;
+    height: 22px;
+    margin-left: 4px;
+    padding-inline: 5px;
+    border-radius: 999px;
+    color: currentColor;
+    background: #20170e12;
+    font-size: .68rem
+}
+
+.moderator-tabs button.active>span {
+    background: #fff2c526
+}
+
+.moderator-tabs button:focus-visible,
+.moderator-view-panel:focus-visible {
+    outline: 3px solid var(--ink-blue);
+    outline-offset: 3px
+}
+
+.moderator-view-panel {
+    min-width: 0;
+    scroll-margin-top: 116px
+}
+
+.moderator-view-panel[hidden] {
+    display: none
+}
+
+.moderator-view-panel>.script-panel,
+.moderator-view-panel>.death-panel {
+    width: 100%;
+    padding: 18px
+}
+
+.moderator-view-note {
+    max-width: 72ch;
+    margin: -5px 0 12px;
+    color: var(--ink-soft);
+    font-size: .84rem;
+    font-weight: 700;
+    line-height: 1.45
+}
+
+.death-panel-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 12px
+}
+
+.death-panel-heading h3 {
+    margin-bottom: 7px
+}
+
+.death-panel-heading .death-panel-note {
+    max-width: 62ch;
+    margin: 0
+}
+
+.death-panel-heading>span {
+    flex: 0 0 auto;
+    padding: 6px 9px;
+    border: 1px solid #5f7d4745;
+    border-radius: 999px;
+    color: #38522c;
+    background: #e2ebd8b8;
+    font-size: .72rem;
+    font-weight: 900
+}
+
+.death-roster.moderator-roster {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 7px
+}
+
+.moderator-roster .moderator-player {
+    min-width: 0;
+    min-height: 64px;
+    scroll-margin-top: 135px;
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+    align-items: center;
+    justify-items: stretch;
+    gap: 8px;
+    padding: 7px 8px;
+    border-width: 2px 2px 2px 5px;
+    border-radius: 10px;
+    animation: none
+}
+
+.moderator-player.team-werewolf {
+    border-left-color: var(--ink-red)
+}
+
+.moderator-player.team-village {
+    border-left-color: var(--ink-green)
+}
+
+.moderator-player.team-vampire {
+    border-left-color: #56356f
+}
+
+.moderator-player.team-other {
+    border-left-color: #b97725
+}
+
+.moderator-player.team-unknown {
+    border-left-color: var(--ink-soft)
+}
+
+.moderator-roster .moderator-player .player-avatar {
+    width: 34px;
+    height: 34px;
+    border-width: 2px;
+    font-size: .82rem
+}
+
+.moderator-roster .moderator-player .player-info-col {
+    max-width: 100%;
+    gap: 1px;
+    overflow: hidden
+}
+
+.moderator-roster .moderator-player p {
+    width: 100%;
+    text-align: left;
+    font-size: .82rem;
+    line-height: 1.15
+}
+
+.moderator-roster .moderator-player .player-card-role {
+    width: 100%;
+    min-width: 0;
+    gap: 5px;
+    margin: 1px 0
+}
+
+.moderator-roster .moderator-player .roster-role-name {
+    min-width: 0;
+    color: var(--ink);
+    font-size: .72rem;
+    line-height: 1.2
+}
+
+.moderator-roster .moderator-player .roster-team-badge {
+    flex: 0 0 auto;
+    padding: 2px 5px;
+    color: #fff2c5;
+    font-size: .62rem;
+    letter-spacing: .04em;
+    line-height: 1.2
+}
+
+.moderator-roster .moderator-player .status-label {
+    color: #38522c;
+    font-size: .67rem;
+    line-height: 1.2
+}
+
+.moderator-roster .moderator-player.pending .status-label,
+.moderator-roster .moderator-player.dead .status-label {
+    color: var(--ink-red-dark)
+}
+
+.moderator-roster .moderator-player.pending .player-avatar,
+.moderator-roster .moderator-player.pending .roster-team-badge {
+    color: #fff2c5
+}
+
+.moderator-roster .moderator-player.dead {
+    opacity: .72;
+    filter: grayscale(.65)
+}
+
+.moderator-roster .moderator-player>.mark-death {
+    grid-column: 3;
+    width: 116px;
+    min-height: 44px;
+    padding: 6px 8px;
+    font-size: .68rem;
+    touch-action: manipulation
+}
+
+.moderator-roster .day-death-confirm {
+    grid-column: 1 / -1;
+    min-width: 0;
+    gap: 6px;
+    padding-top: 2px
+}
+
+.moderator-roster .day-death-confirm>span {
+    flex: 0 0 auto
+}
+
+.moderator-roster .day-death-confirm .mark-death {
+    min-width: 88px;
+    min-height: 44px;
+    touch-action: manipulation
+}
+
+@media (width<=820px) {
+    .moderator-command-bar {
+        grid-template-columns: 1fr
+    }
+
+    .death-roster.moderator-roster {
+        grid-template-columns: 1fr
+    }
+}
+
+@media (width<=560px) {
+    .moderator-screen {
+        width: 100%;
+        max-width: 100%;
+        padding: 8px 10px 24px
+    }
+
+    .moderator-command-bar {
+        gap: 7px;
+        margin-bottom: 10px;
+        padding: 7px;
+        border-width: 2px;
+        border-radius: 13px;
+        box-shadow: 0 5px 0 #37220e30, 0 8px 18px #37220e20
+    }
+
+    .moderator-phase-row {
+        gap: 8px
+    }
+
+    .moderator-phase-title>span {
+        font-size: .6rem
+    }
+
+    .moderator-phase-title h2 {
+        font-size: 1.18rem
+    }
+
+    .moderator-phase-action {
+        max-width: 174px;
+        padding-inline: 10px;
+        font-size: .72rem
+    }
+
+    .moderator-tabs {
+        gap: 4px;
+        padding: 3px
+    }
+
+    .moderator-tabs button {
+        font-size: .76rem
+    }
+
+    .moderator-view-panel {
+        scroll-margin-top: 112px
+    }
+
+    .moderator-view-panel>.script-panel,
+    .moderator-view-panel>.death-panel {
+        padding: 13px 12px;
+        border-width: 3px;
+        border-radius: 14px
+    }
+
+    .moderator-view-panel h3 {
+        font-size: .98rem
+    }
+
+    .moderator-view-note,
+    .death-panel-heading .death-panel-note {
+        font-size: .78rem
+    }
+
+    .script-row {
+        grid-template-columns: 36px minmax(0, 1fr);
+        gap: 9px;
+        padding: 10px 0
+    }
+
+    .script-order {
+        width: 34px;
+        height: 34px
+    }
+
+    .script-row small {
+        font-size: .8rem;
+        line-height: 1.48
+    }
+
+    .death-panel-heading {
+        align-items: flex-start;
+        gap: 8px;
+        margin-bottom: 9px
+    }
+
+    .death-panel-heading>span {
+        padding: 5px 7px;
+        font-size: .65rem
+    }
+
+    .moderator-roster .moderator-player {
+        min-height: 56px;
+        grid-template-columns: 32px minmax(0, 1fr) auto;
+        gap: 5px;
+        padding: 4px 6px
+    }
+
+    .death-roster.moderator-roster {
+        gap: 5px
+    }
+
+    .moderator-roster .moderator-player .player-avatar {
+        width: 32px;
+        height: 32px
+    }
+
+    .moderator-roster .moderator-player>.mark-death {
+        width: 104px;
+        font-size: .65rem
+    }
+
+    .moderator-roster .day-death-confirm>span {
+        width: 100%
+    }
+}
+
+@media (prefers-reduced-motion:reduce) {
+    .moderator-tabs button {
+        transition: none
+    }
+}
