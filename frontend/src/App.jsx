@@ -52,6 +52,7 @@ export default function App() {
   const [playerRole, setPlayerRole] = useState(null);
   const [flipped, setFlipped] = useState(false);
   const [postGameAction, setPostGameAction] = useState(null);
+  const [postGameSummary, setPostGameSummary] = useState([]);
 
   const applyState = useCallback((state) => {
     if (state?.room) {
@@ -59,6 +60,7 @@ export default function App() {
       setRoom(state.room);
     }
     if (state?.roleSetup) setRoleSetup(state.roleSetup);
+    setPostGameSummary(state?.postGameSummary || []);
   }, []);
 
   useEffect(() => {
@@ -89,6 +91,11 @@ export default function App() {
   }, [applyState]);
 
   useEffect(() => { if (roleSetup?.balanceMode) setBalanceMode(roleSetup.balanceMode); }, [roleSetup?.balanceMode]);
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timeoutId = window.setTimeout(() => setToast(null), 4000);
+    return () => window.clearTimeout(timeoutId);
+  }, [toast]);
   useEffect(() => {
     if (room?.status === "waiting") {
       setHostAssignments([]); setPlayerRole(null); setFlipped(false); setPostGameAction(null);
@@ -186,7 +193,7 @@ export default function App() {
   if (room.status === "waiting") return <Lobby room={room} isHost={isHost} onLeave={leaveRoom} onStart={startAssignment} onNotice={setToast} toast={toast} dismissToast={() => setToast(null)} />;
   if (room.status === "assigning" && isHost) return <Assignment room={room} setup={roleSetup} catalog={roleCatalog} modes={balanceModes} balanceMode={balanceMode} setBalanceMode={setBalanceMode} slots={manualSlots} assignments={hostAssignments} onQuantity={changeQuantity} onGenerate={() => socket.emit("roles:generate", { balanceMode, requestId: crypto.randomUUID() })} onRandom={() => socket.emit("roles:assign-random")} onSlot={(key, playerId) => setManualSlots((current) => current.map((slot) => slot.key === key ? { ...slot, playerId } : slot))} onSave={saveManual} onFinalize={() => socket.emit("roles:finalize")} onLeave={leaveRoom} toast={toast} dismissToast={() => setToast(null)} />;
   if (room.status === "assigning") return <Waiting room={room} onLeave={leaveRoom} toast={toast} dismissToast={() => setToast(null)} />;
-  if (room.status === "ended") return <GameEnded room={room} isHost={isHost} onLeave={leaveRoom} onContinue={continueSameSquad} onDisband={disbandRoom} processing={postGameAction} toast={toast} dismissToast={() => setToast(null)} />;
+  if (room.status === "ended") return <GameEnded room={room} summary={postGameSummary} isHost={isHost} onLeave={leaveRoom} onContinue={continueSameSquad} onDisband={disbandRoom} processing={postGameAction} toast={toast} dismissToast={() => setToast(null)} />;
   if (room.status === "playing" && isHost) return <Moderator room={room} roles={roleSetup.selectedRoles || []} assignments={hostAssignments} catalog={roleCatalog} onLeave={leaveRoom} onMark={(playerId, markDead) => socket.emit("game:mark-death", { playerId, markDead })} onDay={() => socket.emit("game:begin-day")} onNight={() => socket.emit("game:begin-night")} toast={toast} dismissToast={() => setToast(null)} />;
   return <PlayerRole room={room} player={self} role={playerRole} flipped={flipped} setFlipped={setFlipped} toast={toast} dismissToast={() => setToast(null)} />;
 }
@@ -303,10 +310,10 @@ function Moderator({ room, roles, assignments, catalog, onLeave, onMark, onDay, 
   </PaperShell>;
 }
 
-function GameEnded({ room, isHost, onLeave, onContinue, onDisband, processing, toast, dismissToast }) {
+function GameEnded({ room, summary, isHost, onLeave, onContinue, onDisband, processing, toast, dismissToast }) {
   return <PaperShell profileName={isHost ? room.hostName : "Người chơi"} onLeave={onLeave}>
     {toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}
-    <section className="ritual-screen"><div className="paper-panel game-ended-panel"><span className="ribbon">Ván chơi kết thúc</span><p className="game-ended-kicker">Kết quả chung cuộc</p><h2>{WINNER_LABELS[room.winner] || "Ván chơi kết thúc"}</h2><p>{room.endReason}</p><div className="game-ended-count"><strong>{room.players.filter((player) => player.isAlive).length}</strong><span>người còn sống</span></div>{isHost ? <div className="post-game-actions"><p>Ván chơi đã kết thúc. Hãy chọn tiếp tục với đội hình hiện tại hoặc giải tán phòng.</p><button className="paper-button" type="button" disabled={Boolean(processing)} onClick={onContinue}>Tiếp tục với đội hình hiện tại</button><button className="paper-button destructive" type="button" disabled={Boolean(processing)} onClick={onDisband}>Giải tán phòng</button></div> : <p className="post-game-wait">Ván chơi đã kết thúc. Đang chờ Quản Trò quyết định tiếp tục hoặc giải tán phòng.</p>}</div></section>
+    <section className="ritual-screen"><div className="paper-panel game-ended-panel"><span className="ribbon">Ván chơi kết thúc</span><p className="game-ended-kicker">Kết quả chung cuộc</p><h2>{WINNER_LABELS[room.winner] || "Ván chơi kết thúc"}</h2><p>{room.endReason}</p><div className="game-ended-count"><strong>{room.players.filter((player) => player.isAlive).length}</strong><span>người còn sống</span></div><section className="post-game-summary" aria-labelledby="post-game-summary-title"><h3 id="post-game-summary-title">Tất cả vai trò</h3>{summary.length ? <div className="post-game-summary-list">{summary.map((player) => <article className={`post-game-player ${player.isAlive ? "survived" : "dead"}`} key={player.playerId}><span className="player-avatar">{playerInitial(player.name)}</span><div><strong>{player.name}</strong><span className="post-game-role">{player.role?.name || "Vai trò không có dữ liệu"}</span></div><span className="post-game-status">{player.isAlive ? "Còn sống" : player.deathNight ? `Đã chết · Đêm ${player.deathNight}` : "Đã chết (không rõ đêm)"}</span></article>)}</div> : <p className="post-game-empty">Đang tải kết quả vai trò. Nếu dữ liệu cũ không đầy đủ, hãy hỏi Quản Trò.</p>}</section>{isHost ? <div className="post-game-actions"><p>Ván chơi đã kết thúc. Hãy chọn tiếp tục với đội hình hiện tại hoặc giải tán phòng.</p><button className="paper-button" type="button" disabled={Boolean(processing)} onClick={onContinue}>Tiếp tục với đội hình hiện tại</button><button className="paper-button destructive" type="button" disabled={Boolean(processing)} onClick={onDisband}>Giải tán phòng</button></div> : <p className="post-game-wait">Ván chơi đã kết thúc. Đang chờ Quản Trò quyết định tiếp tục hoặc giải tán phòng.</p>}</div></section>
   </PaperShell>;
 }
 

@@ -164,6 +164,24 @@ export function createRoleApp() {
     }
   });
 
+  // This endpoint is deliberately guarded by the lobby's final room state. The
+  // gateway calls it only after a game ends, so assignments never leak during play.
+  app.get("/rooms/:roomId/results", async (req, res, next) => {
+    try {
+      const lobbyRoom = await fetchEligibility(req.params.roomId, "");
+      if (lobbyRoom.status !== "ended") {
+        throw appError("invalid_room_state", "Chỉ có thể xem vai trò sau khi ván chơi kết thúc.", 409);
+      }
+      const assignments = await getAssignments(pool, req.params.roomId);
+      res.json({ assignments: assignments.map((assignment) => ({
+        playerId: assignment.playerId,
+        role: ROLE_BY_ID.get(assignment.roleId) || null,
+      })) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.post("/internal/rooms/:roomId/win-check", async (req, res, next) => {
     try {
       const alivePlayerIds = Array.isArray(req.body.alivePlayerIds)

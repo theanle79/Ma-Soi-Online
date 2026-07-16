@@ -63,6 +63,7 @@ export function mapRoom(row, players) {
       joinedAt: player.joined_at,
       isAlive: player.is_alive,
       pendingDeath: player.pending_death,
+      deathNight: player.death_night,
     })),
   };
 }
