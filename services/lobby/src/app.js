@@ -2,7 +2,13 @@ import crypto from "node:crypto";
 import cors from "cors";
 import express from "express";
 import { inTransaction, pool } from "./db.js";
-import { armPhaseTimer, clearPhaseTimer, DISCUSSION_PHASE_SECONDS } from "./timer-manager.js";
+import {
+  armDisconnectionTimer,
+  armPhaseTimer,
+  clearDisconnectionTimer,
+  clearPhaseTimer,
+  DISCUSSION_PHASE_SECONDS,
+} from "./timer-manager.js";
 import {
   appError,
   assertHost,
@@ -16,7 +22,6 @@ import {
   requireUuid,
   WINNERS,
 } from "./lobby-domain.js";
-import { armDisconnectionTimer, clearDisconnectionTimer } from './timer-manager.js';
 
 async function findRoom(client, idOrCode, { lock = false } = {}) {
   const query = isUuid(idOrCode)
@@ -459,8 +464,6 @@ export function createLobbyApp() {
     try {
       const { roomId, playerId } = req.params;
 
-      await notifyGateway(roomId, 'player:disconnected', { playerId });
-
       armDisconnectionTimer(playerId, roomId, async (expiredPlayerId, expiredRoomId) => {
         try {
           await inTransaction(async (client) => {
@@ -493,6 +496,10 @@ export function createLobbyApp() {
         }
       });
 
+      // Register the grace period before waiting on the gateway webhook. An immediate
+      // reconnect can otherwise arrive while this request is still awaiting the webhook.
+      await notifyGateway(roomId, 'player:disconnected', { playerId });
+
       res.status(200).json({ message: "Grace period timer started" });
     } catch (error) {
       next(error);
@@ -503,14 +510,25 @@ export function createLobbyApp() {
     try {
       const { roomId, playerId } = req.params;
 
-      const isCleared = clearDisconnectionTimer(playerId);
+      let canReconnect = clearDisconnectionTimer(playerId);
 
-      if (isCleared) {
-        await notifyGateway(roomId, 'player:reconnected', { playerId });
-        res.status(200).json({ message: "Người chơi đã kết nối lại thành công." });
-      } else {
-        res.status(403).json({ error: "grace_period_expired", message: "Quá thời gian kết nối lại. Bạn đã bị loại khỏi phòng." });
+      // Timer state is process-local and requests can be reordered. Confirm the actor's
+      // persisted room membership before deciding that the grace period has expired.
+      if (!canReconnect) {
+        const room = await roomSnapshot(pool, roomId);
+        canReconnect = Boolean(
+          room
+          && room.status !== "closed"
+          && (room.hostId === playerId || room.players.some((player) => player.id === playerId)),
+        );
       }
+
+      if (!canReconnect) {
+        return res.status(403).json({ error: "grace_period_expired", message: "Quá thời gian kết nối lại. Bạn đã bị loại khỏi phòng." });
+      }
+
+      await notifyGateway(roomId, 'player:reconnected', { playerId });
+      return res.status(200).json({ message: "Người chơi đã kết nối lại thành công." });
     } catch (error) {
       next(error);
     }

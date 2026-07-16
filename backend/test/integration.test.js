@@ -65,6 +65,16 @@ test("lets a disconnected host resume an open room", async (t) => {
   const host = await connectClient();
   sockets.push(host);
   const created = await emitAndWait(host, "room:create", { hostName: "Quan Tro Resume", hostId }, "room:created");
+
+  const reconnectWithoutTimer = await fetch(
+    `${lobbyUrl}/internal/rooms/${created.room.id}/players/${hostId}/reconnect`,
+    {
+      method: "POST",
+      headers: { authorization: `Bearer ${serviceToken}` },
+    },
+  );
+  assert.equal(reconnectWithoutTimer.status, 200);
+
   host.disconnect();
 
   const resumedHost = await connectClient();
