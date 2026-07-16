@@ -361,7 +361,7 @@ export function createLobbyApp() {
 
   app.post("/rooms/:roomId/continue", async (req, res, next) => {
     try {
-      const hostId = requireUuid(req.body.hostId, "Mã Quản Trò");
+      const hostId = requireUuid(req.body.hostId, "Mã Quan Trò");
       const room = await inTransaction(async (client) => {
         const found = await findRoom(client, req.params.roomId, { lock: true });
         if (!found) throw appError("room_not_found", "Không tìm thấy phòng.", 404);
@@ -388,7 +388,7 @@ export function createLobbyApp() {
 
   app.post("/rooms/:roomId/disband", async (req, res, next) => {
     try {
-      const hostId = requireUuid(req.body.hostId, "Mã Quản Trò");
+      const hostId = requireUuid(req.body.hostId, "Mã Quan Trò");
       const room = await inTransaction(async (client) => {
         const found = await findRoom(client, req.params.roomId, { lock: true });
         if (!found) throw appError("room_not_found", "Không tìm thấy phòng.", 404);

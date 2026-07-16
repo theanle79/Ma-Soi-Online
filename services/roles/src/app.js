@@ -199,9 +199,9 @@ export function createRoleApp() {
 
   app.post("/rooms/:roomId/reset-assignments", async (req, res, next) => {
     try {
-      const hostId = requireUuid(req.body.hostId, "Mã Quản Trò");
+      const hostId = requireUuid(req.body.hostId, "Mã Quan Trò");
       const lobbyRoom = await fetchEligibility(req.params.roomId, hostId);
-      if (!lobbyRoom.actorIsHost) throw appError("not_host", "Chỉ Quản Trò mới có thể tiếp tục ván chơi.", 403);
+      if (!lobbyRoom.actorIsHost) throw appError("not_host", "Chỉ Quan Trò mới có thể tiếp tục ván chơi.", 403);
       if (lobbyRoom.status !== "ended") throw appError("invalid_room_state", "Phòng chưa kết thúc ván chơi.", 409);
       await inTransaction((client) => client.query("DELETE FROM assignments WHERE room_id = $1", [req.params.roomId]));
       res.json({ ok: true });

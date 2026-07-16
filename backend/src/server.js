@@ -295,7 +295,7 @@ io.on("connection", (socket) => {
   socket.on("room:disband", handle(socket, async () => {
     const session = sessionFor(socket, { hostOnly: true });
     await lobby(`/rooms/${session.roomId}/disband`, { method: "POST", body: { hostId: session.actorId } });
-    await emitRoomClosed(session.roomId, "Quản Trò đã giải tán phòng.");
+    await emitRoomClosed(session.roomId, "Quan Trò đã giải tán phòng.");
   }));
 
   socket.on("room:leave", handle(socket, async () => {
