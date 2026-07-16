@@ -2,7 +2,13 @@ import crypto from "node:crypto";
 import cors from "cors";
 import express from "express";
 import { inTransaction, pool } from "./db.js";
-import { armPhaseTimer, clearPhaseTimer, DISCUSSION_PHASE_SECONDS } from "./timer-manager.js";
+import {
+  armDisconnectionTimer,
+  armPhaseTimer,
+  clearDisconnectionTimer,
+  clearPhaseTimer,
+  DISCUSSION_PHASE_SECONDS,
+} from "./timer-manager.js";
 import {
   appError,
   assertHost,
@@ -59,15 +65,20 @@ async function transitionToNight(idOrCode, { hostId } = {}) {
 }
 
 // Fire-and-report webhook so the Gateway can broadcast + run its win-check.
-async function notifyGateway(roomId) {
+async function notifyGateway(roomId, event = 'phase-expired', payload = {}) {
   try {
-    const response = await fetch(`${GATEWAY_INTERNAL_URL}/internal/rooms/${roomId}/phase-expired`, {
+    const url = `${GATEWAY_INTERNAL_URL}/internal/rooms/${roomId}/${event}`;
+    const response = await fetch(url, {
       method: "POST",
-      headers: SERVICE_AUTH_TOKEN ? { authorization: `Bearer ${SERVICE_AUTH_TOKEN}` } : undefined,
+      headers: {
+        "Content-Type": "application/json",
+        ...(SERVICE_AUTH_TOKEN ? { authorization: `Bearer ${SERVICE_AUTH_TOKEN}` } : undefined),
+      },
+      body: JSON.stringify(payload)
     });
-    if (!response.ok) console.error(`[timer] gateway rejected phase-expired for ${roomId}: ${response.status}`);
+    if (!response.ok) console.error(`[gateway] rejected ${event} for ${roomId}: ${response.status}`);
   } catch (error) {
-    console.error(`[timer] could not reach gateway for ${roomId}:`, error.message);
+    console.error(`[gateway] could not reach gateway for ${roomId} (${event}):`, error.message);
   }
 }
 
@@ -443,6 +454,81 @@ export function createLobbyApp() {
         return roomSnapshot(client, found.id);
       });
       res.json({ room });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+
+  app.post('/internal/rooms/:roomId/players/:playerId/disconnect', async (req, res, next) => {
+    try {
+      const { roomId, playerId } = req.params;
+
+      armDisconnectionTimer(playerId, roomId, async (expiredPlayerId, expiredRoomId) => {
+        try {
+          await inTransaction(async (client) => {
+            const room = await findRoom(client, expiredRoomId, { lock: true });
+            if (!room) return;
+
+            if (room.host_id === expiredPlayerId) {
+              // host out room -> remove room
+              await client.query(
+                  "UPDATE rooms SET status = 'closed', game_phase = 'closed', closed_at = NOW() WHERE id = $1",
+                  [room.id]
+              );
+              await notifyGateway(expiredRoomId, 'room:closed', { reason: 'Quản Trò đã mất kết nối quá lâu.' });
+              console.log(`[Lobby] Room ${expiredRoomId} closed due to Host timeout.`);
+            } else {
+              // player out -> kick
+              const result = await client.query(
+                  "DELETE FROM participants WHERE room_id = $1 AND player_id = $2 RETURNING player_id",
+                  [room.id, expiredPlayerId]
+              );
+
+              if (result.rowCount > 0) {
+                await notifyGateway(expiredRoomId, 'player:left', { playerId: expiredPlayerId });
+                console.log(`[Lobby] Player ${expiredPlayerId} kicked due to timeout.`);
+              }
+            }
+          });
+        } catch (error) {
+          console.error(`[Lobby] Error handling disconnect expiry for ${expiredPlayerId}:`, error);
+        }
+      });
+
+      // Register the grace period before waiting on the gateway webhook. An immediate
+      // reconnect can otherwise arrive while this request is still awaiting the webhook.
+      await notifyGateway(roomId, 'player:disconnected', { playerId });
+
+      res.status(200).json({ message: "Grace period timer started" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post('/internal/rooms/:roomId/players/:playerId/reconnect', async (req, res, next) => {
+    try {
+      const { roomId, playerId } = req.params;
+
+      let canReconnect = clearDisconnectionTimer(playerId);
+
+      // Timer state is process-local and requests can be reordered. Confirm the actor's
+      // persisted room membership before deciding that the grace period has expired.
+      if (!canReconnect) {
+        const room = await roomSnapshot(pool, roomId);
+        canReconnect = Boolean(
+          room
+          && room.status !== "closed"
+          && (room.hostId === playerId || room.players.some((player) => player.id === playerId)),
+        );
+      }
+
+      if (!canReconnect) {
+        return res.status(403).json({ error: "grace_period_expired", message: "Quá thời gian kết nối lại. Bạn đã bị loại khỏi phòng." });
+      }
+
+      await notifyGateway(roomId, 'player:reconnected', { playerId });
+      return res.status(200).json({ message: "Người chơi đã kết nối lại thành công." });
     } catch (error) {
       next(error);
     }
