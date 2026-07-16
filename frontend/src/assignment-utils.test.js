@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { assignPlayerToSlot } from "./assignment-utils.js";
+import { areAllPlayersAssigned, assignPlayerToSlot } from "./assignment-utils.js";
 
 function slot(key, roleId, playerId = "") {
   return { key, roleId, playerId };
@@ -41,4 +41,19 @@ test("can clear a role without changing the other slots", () => {
     slot("witch-0", "witch"),
     slot("seer-0", "seer", "player-2"),
   ]);
+});
+
+test("recognizes one current player in every role slot", () => {
+  const players = [{ id: "player-1" }, { id: "player-2" }];
+  const slots = [slot("witch-0", "witch", "player-1"), slot("seer-0", "seer", "player-2")];
+
+  assert.equal(areAllPlayersAssigned(slots, players), true);
+});
+
+test("rejects stale, missing, or duplicate player assignments", () => {
+  const players = [{ id: "player-1" }, { id: "player-2" }];
+
+  assert.equal(areAllPlayersAssigned([slot("witch-0", "witch", "player-1")], players), false);
+  assert.equal(areAllPlayersAssigned([slot("witch-0", "witch", "player-1"), slot("seer-0", "seer", "player-1")], players), false);
+  assert.equal(areAllPlayersAssigned([slot("witch-0", "witch", "player-1"), slot("seer-0", "seer", "departed-player")], players), false);
 });

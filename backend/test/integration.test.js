@@ -132,16 +132,9 @@ test("runs the persistent lobby, balanced role deal, and day transition flow", a
     "roles:host-view",
     (state) => state.setup.totalSlots === 6 && state.assignments.length === 0,
   );
-  await emitAndWait(
-    host,
-    "roles:assign-manual",
-    { assignments: playerIds.map((playerId, index) => ({ playerId, roleId: index < 2 ? "werewolf" : "villager" })) },
-    "roles:host-view",
-    (state) => state.assignments.length === 6,
-  );
-
+  const manualAssignments = playerIds.map((playerId, index) => ({ playerId, roleId: index < 2 ? "werewolf" : "villager" }));
   const playerRoleWait = waitFor(playerClients[0], "player:state", (state) => Boolean(state.role));
-  const playing = await emitAndWait(host, "roles:finalize", {}, "room:updated", (state) => state.room.status === "playing");
+  const playing = await emitAndWait(host, "roles:finalize", { assignments: manualAssignments }, "room:updated", (state) => state.room.status === "playing");
   const playerState = await playerRoleWait;
   assert.equal(playing.room.gamePhase, "night");
   assert.ok(playerState.role.name);

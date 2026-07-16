@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
-import { assignPlayerToSlot } from "./assignment-utils.js";
+import { areAllPlayersAssigned, assignPlayerToSlot } from "./assignment-utils.js";
 import {
   API_URL,
   buildSlots,
@@ -54,6 +54,7 @@ export default function App() {
   const [flipped, setFlipped] = useState(false);
   const [postGameAction, setPostGameAction] = useState(null);
   const [postGameSummary, setPostGameSummary] = useState([]);
+  const [assignmentRequest, setAssignmentRequest] = useState(null);
 
   const applyState = useCallback((state) => {
     if (state?.room) {
@@ -71,22 +72,34 @@ export default function App() {
       const activeRoom = roomRef.current;
       if (activeRoom) next.emit("room:resume", { roomId: activeRoom.id, actorId: actorId.current });
     });
+    next.on("disconnect", () => setAssignmentRequest(null));
     next.on("room:created", (state) => { applyState(state); setScreen("lobby"); });
     next.on("room:joined", (state) => { applyState(state); setScreen("lobby"); });
     next.on("room:resumed", applyState);
-    next.on("room:updated", applyState);
-    next.on("room:error", ({ message }) => { setPostGameAction(null); setToast(message); });
+    next.on("room:updated", (state) => {
+      applyState(state);
+      if (state?.room?.status !== "assigning") setAssignmentRequest(null);
+    });
+    next.on("room:error", ({ message }) => { setAssignmentRequest(null); setPostGameAction(null); setToast(message); });
     next.on("room:closed", ({ message }) => {
       setToast(message);
       roomRef.current = null;
       setRoom(null);
       setRoleSetup(EMPTY_SETUP);
       setHostAssignments([]);
+      setAssignmentRequest(null);
       setPlayerRole(null);
       setScreen("closed");
     });
     next.on("roles:catalog", ({ roles, balanceModes: modes }) => { setRoleCatalog(roles || []); setBalanceModes(modes || []); });
-    next.on("roles:host-view", ({ setup, assignments }) => { if (setup) setRoleSetup(setup); setHostAssignments(assignments || []); });
+    next.on("roles:host-view", ({ setup, assignments, requestId }) => {
+      if (setup) setRoleSetup(setup);
+      setHostAssignments(assignments || []);
+      setAssignmentRequest((current) => {
+        if (current?.type === "generate" && requestId !== current.requestId) return current;
+        return null;
+      });
+    });
     next.on("player:state", (state) => { applyState(state); setPlayerRole(state.role || null); });
     return () => next.disconnect();
   }, [applyState]);
@@ -99,7 +112,7 @@ export default function App() {
   }, [toast]);
   useEffect(() => {
     if (room?.status === "waiting") {
-      setHostAssignments([]); setPlayerRole(null); setFlipped(false); setPostGameAction(null);
+      setHostAssignments([]); setPlayerRole(null); setFlipped(false); setAssignmentRequest(null); setPostGameAction(null);
     }
   }, [room?.status]);
 
@@ -120,7 +133,7 @@ export default function App() {
 
   function reset() {
     roomRef.current = null;
-    setRoom(null); setRoleSetup(EMPTY_SETUP); setHostAssignments([]); setPlayerRole(null); setFlipped(false); setScreen("welcome");
+    setRoom(null); setRoleSetup(EMPTY_SETUP); setHostAssignments([]); setAssignmentRequest(null); setPlayerRole(null); setFlipped(false); setScreen("welcome");
     window.history.replaceState({}, "", "/");
   }
 
@@ -144,6 +157,7 @@ export default function App() {
   }
 
   function changeQuantity(roleId, delta) {
+    if (assignmentRequest || !guardConnection()) return;
     const catalogRole = roleCatalog.find((role) => role.id === roleId);
     if (!catalogRole) return;
     const quantities = new Map((roleSetup.selectedRoles || []).map((role) => [role.id, role.quantity]));
@@ -152,9 +166,29 @@ export default function App() {
     socket.emit("roles:configure", { balanceMode, selections: [...quantities].map(([id, quantity]) => ({ roleId: id, quantity })) });
   }
 
-  function saveManual() {
-    if (manualSlots.some((slot) => !slot.playerId)) { setToast("Hãy chọn người chơi cho từng vai."); return; }
-    socket.emit("roles:assign-manual", { assignments: manualSlots.map((slot) => ({ playerId: slot.playerId, roleId: slot.roleId })) });
+  function generateRoles() {
+    if (assignmentRequest || !guardConnection()) return;
+    const requestId = crypto.randomUUID();
+    setAssignmentRequest({ type: "generate", requestId });
+    socket.emit("roles:generate", { balanceMode, requestId });
+  }
+
+  function assignRolesRandomly() {
+    if (assignmentRequest || !guardConnection()) return;
+    setAssignmentRequest({ type: "random" });
+    socket.emit("roles:assign-random");
+  }
+
+  function finalizeAssignment() {
+    const currentPlayers = room?.players || [];
+    const readyToStart = currentPlayers.length >= 6
+      && room.playerCount === currentPlayers.length
+      && roleSetup.totalSlots === currentPlayers.length
+      && areAllPlayersAssigned(manualSlots, currentPlayers);
+    if (!readyToStart) { setToast("Hãy gán đủ vai cho tất cả người chơi trước khi bắt đầu."); return; }
+    if (assignmentRequest || !guardConnection()) return;
+    setAssignmentRequest({ type: "finalize" });
+    socket.emit("roles:finalize", { assignments: manualSlots.map((slot) => ({ playerId: slot.playerId, roleId: slot.roleId })) });
   }
 
   function continueSameSquad() {
@@ -192,7 +226,7 @@ export default function App() {
   }
 
   if (room.status === "waiting") return <Lobby room={room} isHost={isHost} onLeave={leaveRoom} onStart={startAssignment} onNotice={setToast} toast={toast} dismissToast={() => setToast(null)} />;
-  if (room.status === "assigning" && isHost) return <Assignment room={room} setup={roleSetup} catalog={roleCatalog} modes={balanceModes} balanceMode={balanceMode} setBalanceMode={setBalanceMode} slots={manualSlots} assignments={hostAssignments} onQuantity={changeQuantity} onGenerate={() => socket.emit("roles:generate", { balanceMode, requestId: crypto.randomUUID() })} onRandom={() => socket.emit("roles:assign-random")} onSlot={(key, playerId) => setManualSlots((current) => assignPlayerToSlot(current, key, playerId))} onSave={saveManual} onFinalize={() => socket.emit("roles:finalize")} onLeave={leaveRoom} toast={toast} dismissToast={() => setToast(null)} />;
+  if (room.status === "assigning" && isHost) return <Assignment room={room} setup={roleSetup} catalog={roleCatalog} modes={balanceModes} balanceMode={balanceMode} setBalanceMode={setBalanceMode} slots={manualSlots} pendingAction={assignmentRequest?.type || null} onQuantity={changeQuantity} onGenerate={generateRoles} onRandom={assignRolesRandomly} onSlot={(key, playerId) => setManualSlots((current) => assignPlayerToSlot(current, key, playerId))} onFinalize={finalizeAssignment} onLeave={leaveRoom} toast={toast} dismissToast={() => setToast(null)} />;
   if (room.status === "assigning") return <Waiting room={room} onLeave={leaveRoom} toast={toast} dismissToast={() => setToast(null)} />;
   if (room.status === "ended") return <GameEnded room={room} summary={postGameSummary} isHost={isHost} onLeave={leaveRoom} onContinue={continueSameSquad} onDisband={disbandRoom} processing={postGameAction} toast={toast} dismissToast={() => setToast(null)} />;
   if (room.status === "playing" && isHost) return <Moderator room={room} roles={roleSetup.selectedRoles || []} assignments={hostAssignments} catalog={roleCatalog} onLeave={leaveRoom} onMark={(playerId, markDead) => socket.emit("game:mark-death", { playerId, markDead })} onDay={() => socket.emit("game:begin-day")} onNight={() => socket.emit("game:begin-night")} toast={toast} dismissToast={() => setToast(null)} />;
@@ -227,53 +261,199 @@ function Lobby({ room, isHost, onLeave, onStart, onNotice, toast, dismissToast }
   return <PaperShell profileName={isHost ? room.hostName : "Người chơi"} onLeave={onLeave}>{toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}<section className="lobby"><div className="paper-panel lobby-panel"><div className="lobby-header"><div><span className="ribbon small">Phòng chờ</span><div className="room-code-row"><h2>Phòng <span>{room.code}</span></h2><button className="copy-code-button" type="button" onClick={copyRoomCode}>Sao chép mã</button></div><p>Quan Trò: {room.hostName}</p></div><div className="lobby-actions">{isHost ? <><p className={canStart ? "status-line ready" : "status-line"}>{canStart ? "Đã đủ người chơi để phân vai." : `Cần thêm ${6 - room.playerCount} người chơi.`}</p><button className={`paper-button ${canStart ? "ready" : ""}`} type="button" disabled={!canStart} onClick={onStart}>Bắt đầu phân vai</button></> : <p>Hãy chờ Quan Trò chuẩn bị bộ vai.</p>}</div></div>{isHost && <div className="lobby-qr"><div className="qr-placeholder" aria-label="Mã QR sẽ được bổ sung sau"><strong>QR</strong><small>Sắp có</small></div><div><strong>Mời bạn bè vào phòng</strong><p>Chia sẻ đường dẫn hoặc gửi mã {room.code}. Tính năng quét QR sẽ được bổ sung sau.</p><button className="paper-button blue compact" type="button" onClick={shareRoom}>Chia sẻ lời mời</button></div></div>}<div className="host-card"><span className="player-avatar">{playerInitial(room.hostName)}</span><strong>{room.hostName}</strong><span>Quan Trò</span></div><div className="players-grid">{room.players.map((player, index) => <article className={`player-card ${player.isAlive === false ? "dead" : ""} ${player.pendingDeath ? "pending" : ""}`} key={player.id} style={{ "--i": index }}><span className="player-avatar">{playerInitial(player.name)}</span><p>{player.name}</p><span className="status-label">{player.isAlive === false ? "Đã chết" : player.pendingDeath ? "Đã đánh dấu" : "Đang chơi"}</span></article>)}</div></div></section></PaperShell>;
 }
 
-function Assignment({ room, setup, catalog, modes, balanceMode, setBalanceMode, slots, assignments, onQuantity, onGenerate, onRandom, onSlot, onSave, onFinalize, onLeave, toast, dismissToast }) {
-  const selected = new Map((setup.selectedRoles || []).map((role) => [role.id, role.quantity]));
+function Assignment({ room, setup, catalog, modes, balanceMode, setBalanceMode, slots, pendingAction, onQuantity, onGenerate, onRandom, onSlot, onFinalize, onLeave, toast, dismissToast }) {
+  const selectedRoles = setup.selectedRoles || [];
+  const selected = new Map(selectedRoles.map((role) => [role.id, role.quantity]));
   const fullRoleSet = setup.totalSlots === room.playerCount;
-  const saved = assignments.length === room.playerCount;
+  const readyToStart = room.players.length >= 6
+    && room.playerCount === room.players.length
+    && setup.totalSlots === room.players.length
+    && areAllPlayersAssigned(slots, room.players);
+  const currentStep = !fullRoleSet ? 1 : readyToStart ? 3 : 2;
+  const remainingRoles = Math.max(0, room.playerCount - setup.totalSlots);
+  const balanceModeIndex = Math.max(0, modes.findIndex((mode) => mode.id === balanceMode));
+  const balanceSliderMax = Math.max(0, modes.length - 1);
+  const activeBalanceMode = modes[balanceModeIndex];
+  const isPending = Boolean(pendingAction);
+  const pendingMessage = pendingAction === "generate"
+    ? "Đang tạo bộ vai phù hợp…"
+    : pendingAction === "random"
+      ? "Đang trộn và chia vai…"
+      : pendingAction === "finalize"
+        ? "Đang lưu phân vai và bắt đầu đêm 1…"
+        : "";
+  const balanceStatus = setup.totalSlots === 0
+    ? "Chưa có bộ vai — hãy tạo tự động để bắt đầu"
+    : setup.balance?.withinTarget
+      ? "Đang trong khoảng cân bằng gợi ý"
+      : "Bộ vai đang ngoài khoảng cân bằng gợi ý";
+  const balanceStatusClass = setup.totalSlots === 0 ? "empty" : setup.balance?.withinTarget ? "within-target" : "outside-target";
+
   return <PaperShell profileName={room.hostName} onLeave={onLeave} phase={room.gamePhase}>
     {toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}
     <section className="assignment-screen">
       <header className="assignment-header">
-        <div>
+        <div className="assignment-header-copy">
           <span className="ribbon">Bàn điều khiển Quan Trò</span>
-          <h2>Chọn và chia vai</h2>
-          <p className="assignment-intro">Có {room.playerCount} người chơi. Quan Trò không nằm trong danh sách phân vai.</p>
+          <h2>Tạo và chia bộ vai</h2>
+          <p className="assignment-intro">Bắt đầu bằng một bộ vai tự động, xem lại, chia cho {room.playerCount} người chơi rồi bắt đầu đêm 1.</p>
+          <div className="assignment-flow" aria-label="Quy trình chuẩn bị ván chơi">
+            {["Tạo bộ vai", "Gán người", "Bắt đầu"].map((label, index) => {
+              const step = index + 1;
+              return <span className={currentStep === step ? "active" : currentStep > step ? "complete" : ""} aria-current={currentStep === step ? "step" : undefined} key={label}><b>{step}</b> {label}</span>;
+            })}
+          </div>
         </div>
-        <div className="assignment-summary">
-          <div><small>Vai đã chọn</small><strong>{setup.totalSlots} / {room.playerCount}</strong></div>
-          <div><small>Điểm cân bằng</small><strong className="score">{formatScore(setup.balance?.score)}</strong></div>
-          <small>{setup.balance?.withinTarget ? "Đúng khoảng gợi ý" : "Bộ vai thủ công có thể nằm ngoài khoảng gợi ý"}</small>
+        <div className="assignment-summary" aria-label="Tóm tắt thiết lập ván chơi">
+          <div className="assignment-stat"><small>Người chơi</small><strong>{room.playerCount}</strong></div>
+          <div className="assignment-stat"><small>Vai đã chọn</small><strong>{setup.totalSlots}<span>/{room.playerCount}</span></strong></div>
+          <div className="assignment-stat"><small>Điểm cân bằng</small><strong className="score">{formatScore(setup.balance?.score)}</strong></div>
+          <p className={`assignment-balance-status ${balanceStatusClass}`}>{balanceStatus}</p>
         </div>
       </header>
-      <div className="assignment-controls">
-        <aside className="role-library-panel">
-          <h3>Thư viện vai</h3>
-          <div className="balance-choices">{modes.map((mode) => <button className={`balance-choice ${balanceMode === mode.id ? "active" : ""}`} key={mode.id} type="button" onClick={() => setBalanceMode(mode.id)}>{mode.name}</button>)}</div>
-          <button className="paper-button blue full compact" type="button" onClick={onGenerate}>Rút bộ vai cân bằng</button>
-          {TEAM_ORDER.map((team) => <div className="role-category" key={team}>
-            <h4>{TEAM_LABELS[team]}</h4>
-            {catalog.filter((role) => role.team === team).map((role) => {
-              const quantity = selected.get(role.id) || 0;
-              return <div className="role-row" key={role.id}><div><strong>{role.name}</strong><small>{formatScore(role.value)} điểm {role.recommended ? " · Gợi ý" : ""}</small></div><div className="quantity-stepper"><button type="button" aria-label={`Giảm ${role.name}`} disabled={!quantity} onClick={() => onQuantity(role.id, -1)}>−</button><span>{quantity}</span><button type="button" aria-label={`Tăng ${role.name}`} disabled={setup.totalSlots >= room.playerCount || quantity >= role.max} onClick={() => onQuantity(role.id, 1)}>+</button></div></div>;
-            })}
-          </div>)}
-        </aside>
-        <section className="deal-panel">
-          <div className="deal-panel-head"><div><h3>Gán vai</h3><p>Chia ngẫu nhiên hoặc chọn từng người.</p></div><button className="paper-button blue compact" type="button" disabled={!fullRoleSet} onClick={onRandom}>Trộn và chia vai</button></div>
-          {slots.length ? <div className="assignment-slots">{slots.map((slot) => {
-            return <label className="assignment-slot" key={slot.key}><strong>{slot.role.name}</strong><select value={slot.playerId} onChange={(event) => onSlot(slot.key, event.target.value)}><option value="">Chọn người chơi</option>{room.players.map((player) => <option value={player.id} key={player.id}>{player.name}</option>)}</select></label>;
-          })}</div> : <div className="empty-state">Chọn đủ số vai bằng số người chơi để mở bàn phân vai.</div>}
-          <div className="assignment-actions"><button className="paper-button neutral compact" type="button" disabled={!slots.length || slots.some((slot) => !slot.playerId)} onClick={onSave}>Lưu gán thủ công</button><button className="paper-button compact" type="button" disabled={!saved} onClick={onFinalize}>Bắt đầu đêm 1</button></div>
-          <p className="assignment-note">Trộn và chia vai tạo một lượt phân vai ngẫu nhiên. Bấm lại để trộn lượt mới.</p>
+
+      <div className="assignment-workflow">
+        <section className="preset-panel assignment-card" aria-labelledby="preset-title" aria-busy={pendingAction === "generate"}>
+          <div className="assignment-panel-heading">
+            <span>Bước 1 · Cách nhanh nhất</span>
+            <h3 id="preset-title">Tạo bộ vai tự động</h3>
+            <p>Chọn mức phù hợp với kinh nghiệm của nhóm. Hệ thống vẫn giữ nguyên mọi quy tắc tạo và cân bằng vai hiện có.</p>
+          </div>
+          <fieldset className="balance-control">
+            <legend className="sr-only">Cân bằng bộ vai</legend>
+            <div className="balance-control-heading">
+              <label id="balance-slider-label" htmlFor="balance-mode-slider">Mức cân bằng cho nhóm</label>
+              <output htmlFor="balance-mode-slider">{activeBalanceMode?.name || "Đang tải"}</output>
+            </div>
+            <p className="balance-helper">Kéo thanh theo kinh nghiệm của người chơi. Mức này được dùng khi tạo bộ vai tự động.</p>
+            <div className="balance-slider-shell">
+              <input
+                id="balance-mode-slider"
+                className="balance-slider"
+                type="range"
+                min="0"
+                max={balanceSliderMax}
+                step="1"
+                value={balanceModeIndex}
+                disabled={isPending || modes.length < 2}
+                aria-labelledby="balance-slider-label"
+                aria-describedby="balance-slider-guidance"
+                aria-valuetext={activeBalanceMode ? `${activeBalanceMode.name}. ${activeBalanceMode.guidance}` : "Đang tải các mức cân bằng"}
+                onChange={(event) => setBalanceMode(modes[Number(event.target.value)]?.id || balanceMode)}
+              />
+              <div className="balance-slider-labels" aria-hidden="true">{modes.map((mode) => <span className={balanceMode === mode.id ? "active" : ""} key={mode.id}>{mode.name}</span>)}</div>
+            </div>
+            <div className="balance-guidance" id="balance-slider-guidance" aria-live="polite">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 3h2v3.1l5.6 2.1-.7 1.9-1.2-.5 2.5 5.4h.8v2h-7v-2h.8l2.1-4.6-2.9-1.1V19h3v2H8v-2h3V9.3l-2.9 1.1 2.1 4.6h.8v2H4v-2h.8l2.5-5.4-1.2.5-.7-1.9L11 6.1V3Zm-4 8.8L5.5 15h3L7 11.8Zm10 0L15.5 15h3L17 11.8Z" /></svg>
+              <div><strong>{activeBalanceMode?.name || "Mức cân bằng"}</strong><span>{activeBalanceMode?.guidance || "Đang tải hướng dẫn cân bằng bộ vai."}</span></div>
+            </div>
+          </fieldset>
+          <button className="paper-button blue full assignment-primary-button" type="button" disabled={isPending || !activeBalanceMode} onClick={onGenerate}>
+            {pendingAction === "generate" && <span className="button-spinner" aria-hidden="true" />}
+            {pendingAction === "generate" ? "Đang tạo bộ vai…" : "Tạo bộ vai theo mức này"}
+          </button>
         </section>
+
+        <section className={`selected-role-panel assignment-card ${fullRoleSet ? "complete" : ""}`} aria-labelledby="selected-role-title" aria-live="polite">
+          <div className="selected-role-heading">
+            <div className="assignment-panel-heading compact"><span>Bộ vai hiện tại</span><h3 id="selected-role-title">Bộ vai đã chọn</h3></div>
+            <strong className="selected-role-count">{setup.totalSlots}/{room.playerCount} vai</strong>
+          </div>
+          {selectedRoles.length ? <>
+            <div className="selected-role-list">{selectedRoles.map((role) => <article className={`selected-role-card team-${role.team}`} key={role.id}><div><strong>{role.name}</strong><small>{TEAM_LABELS[role.team] || role.team}</small></div><span aria-label={`${role.quantity} vai ${role.name}`}>×{role.quantity}</span></article>)}</div>
+            <p className={`selection-progress ${fullRoleSet ? "ready" : ""}`}>{fullRoleSet ? "Đủ vai cho mọi người. Bạn có thể chia ngẫu nhiên hoặc gán thủ công bên dưới." : `Cần thêm ${remainingRoles} vai. Tạo lại bộ vai hoặc mở Tùy chỉnh vai nâng cao.`}</p>
+          </> : <div className="selected-role-empty"><strong>Chưa có vai nào được chọn</strong><span>Bấm “Tạo bộ vai theo mức này” để nhận một bộ hoàn chỉnh cho {room.playerCount} người chơi.</span></div>}
+        </section>
+
+        <section className="deal-panel" aria-labelledby="deal-title" aria-busy={pendingAction === "random" || pendingAction === "finalize"}>
+          <div className="deal-panel-head">
+            <div className="assignment-panel-heading compact"><span>Bước 2 · Gán người chơi</span><h3 id="deal-title">Chia vai</h3><p>Trộn ngẫu nhiên là cách nhanh nhất. Bạn vẫn có thể đổi từng người bằng danh sách chọn.</p></div>
+            <button className="paper-button blue compact" type="button" disabled={!fullRoleSet || isPending} onClick={onRandom}>{pendingAction === "random" && <span className="button-spinner" aria-hidden="true" />}{pendingAction === "random" ? "Đang chia vai…" : "Trộn và chia vai"}</button>
+          </div>
+          {fullRoleSet ? <div className="assignment-slots">{slots.map((slot) => {
+            return <label className="assignment-slot" key={slot.key}><strong>{slot.role.name}</strong><select value={slot.playerId} disabled={isPending} aria-label={`Người chơi nhận vai ${slot.role.name}`} onChange={(event) => onSlot(slot.key, event.target.value)}><option value="">Chọn người chơi</option>{room.players.map((player) => <option value={player.id} key={player.id}>{player.name}</option>)}</select></label>;
+          })}</div> : <div className="empty-state assignment-empty"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 3h14a2 2 0 0 1 2 2v12h-2V5H5v14h12v2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm3 4h8v2H8V7Zm0 4h8v2H8v-2Zm0 4h5v2H8v-2Z" /></svg><strong>Chưa đủ vai để chia</strong><span>{setup.totalSlots === 0 ? "Tạo một bộ vai tự động ở bước trên." : `Cần thêm ${remainingRoles} vai để khớp với ${room.playerCount} người chơi.`}</span></div>}
+          <div className="assignment-actions"><div className="assignment-action-label"><span>Bước 3</span><strong>Hoàn tất và bắt đầu</strong></div><button className="paper-button compact" type="button" disabled={!readyToStart || isPending} onClick={onFinalize}>{pendingAction === "finalize" && <span className="button-spinner" aria-hidden="true" />}{pendingAction === "finalize" ? "Đang bắt đầu…" : "Bắt đầu đêm 1"}</button></div>
+          <p className="assignment-note">Nút bắt đầu chỉ mở khi mỗi người chơi có đúng một vai. Phân vai được lưu cùng lúc khi bắt đầu đêm 1.</p>
+        </section>
+
+        <details className="role-library-panel advanced-role-library">
+          <summary>
+            <span><small>Tùy chọn</small><strong>Tùy chỉnh vai nâng cao</strong></span>
+            <span className="advanced-summary-meta">{setup.totalSlots}/{room.playerCount} vai<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m7.4 8.6 4.6 4.6 4.6-4.6L18 10l-6 6-6-6 1.4-1.4Z" /></svg></span>
+          </summary>
+          <div className="advanced-role-content">
+            <div className="assignment-panel-heading">
+              <span>Toàn bộ danh mục</span>
+              <h3>Điều chỉnh số lượng từng vai</h3>
+              <p>Chỉ dùng khi bạn muốn thay đổi bộ vai tự động. Điểm cân bằng và giới hạn số lượng vẫn được tính như trước.</p>
+            </div>
+            <div className="role-replacement-help" id="role-replacement-help">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 17h2v2h-2v-2Zm1-14a9 9 0 1 1 0 18 9 9 0 0 1 0-18Zm0 2a7 7 0 1 0 0 14 7 7 0 0 0 0-14Zm0 2a3.5 3.5 0 0 1 1 6.85V15h-2v-2.75l.75-.2A1.5 1.5 0 1 0 10.5 9.5h-2A3.5 3.5 0 0 1 12 7Z" /></svg>
+              <div><strong>Muốn thay vai khi đã đủ {room.playerCount}/{room.playerCount}?</strong><span>Bấm − ở vai muốn bỏ trước, rồi bấm + ở vai mới. Nút + tạm khóa khi đã đủ người để bộ vai không vượt quá số người chơi.</span></div>
+            </div>
+            {catalog.length ? TEAM_ORDER.map((team) => <div className="role-category" key={team}>
+              <h4>{TEAM_LABELS[team]}</h4>
+              {catalog.filter((role) => role.team === team).map((role) => {
+                const quantity = selected.get(role.id) || 0;
+                return <div className="role-row" key={role.id}><div><strong>{role.name}</strong><small>{formatScore(role.value)} điểm {role.recommended ? " · Gợi ý" : ""}</small></div><div className="quantity-stepper"><button type="button" aria-label={`Giảm ${role.name}`} aria-describedby="role-replacement-help" disabled={isPending || !quantity} onClick={() => onQuantity(role.id, -1)}>−</button><span aria-live="polite">{quantity}</span><button type="button" aria-label={`Tăng ${role.name}`} aria-describedby="role-replacement-help" disabled={isPending || setup.totalSlots >= room.playerCount || quantity >= role.max} onClick={() => onQuantity(role.id, 1)}>+</button></div></div>;
+              })}
+            </div>) : <p className="catalog-loading" role="status">Đang tải danh mục vai…</p>}
+          </div>
+        </details>
       </div>
+      <p className="assignment-request-status" role="status" aria-live="polite">{pendingMessage}</p>
     </section>
   </PaperShell>;
 }
 
+function WaitingGlyph() {
+  return <span className="waiting-status-mark" aria-hidden="true">
+    <svg viewBox="0 0 64 64" focusable="false">
+      <path d="M42.8 10.4A22.8 22.8 0 1 0 51.6 51 20.7 20.7 0 0 1 42.8 10.4Z" />
+      <circle cx="47" cy="17" r="2.5" />
+      <circle cx="54" cy="28" r="1.7" />
+    </svg>
+  </span>;
+}
+
 function Waiting({ room, onLeave, toast, dismissToast }) {
-  return <PaperShell profileName="Người chơi" onLeave={onLeave}>{toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}<section className="ritual-screen"><div className="paper-panel waiting-panel"><div className="night-mark">☾</div><span className="ribbon blue">Đang chuẩn bị</span><h2>Quan Trò đang phân vai</h2><p>Hãy giữ thiết bị này riêng tư. Vai của bạn sẽ chỉ xuất hiện tại đây sau khi Quan Trò hoàn tất.</p><div className="role-chips">{room.players.map((player) => <span key={player.id}>{player.name}</span>)}</div></div></section></PaperShell>;
+  const players = room.players || [];
+  const visiblePlayers = players.slice(0, 6);
+  const remainingPlayers = Math.max(0, players.length - visiblePlayers.length);
+
+  return <PaperShell profileName="Người chơi" onLeave={onLeave}>
+    {toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}
+    <section className="ritual-screen waiting-screen">
+      <div className="paper-panel waiting-panel" aria-labelledby="waiting-title">
+        <span className="ribbon blue">Đang chuẩn bị</span>
+        <WaitingGlyph />
+        <p className="waiting-kicker">Bàn chơi đang được chuẩn bị</p>
+        <h2 id="waiting-title">Quan Trò đang chia vai</h2>
+        <p className="waiting-lead">Bạn đã vào phòng thành công. Hãy ở lại đây — vai bí mật sẽ xuất hiện ngay khi Quan Trò hoàn tất.</p>
+        <p className="sr-only" role="status" aria-live="polite">Đang chờ Quan Trò hoàn tất chia vai.</p>
+
+        <ol className="waiting-steps" aria-label="Tiến trình nhận vai">
+          <li className="complete"><span>1</span><div><strong>Vào phòng</strong><small>Hoàn tất</small></div></li>
+          <li className="active" aria-current="step"><span>2</span><div><strong>Chia vai</strong><small>Đang thực hiện</small></div></li>
+          <li><span>3</span><div><strong>Nhận vai</strong><small>Sắp tới</small></div></li>
+        </ol>
+
+        <div className="waiting-privacy-note">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3 5.5 5.6v5.3c0 4.4 2.7 8.4 6.5 10.1 3.8-1.7 6.5-5.7 6.5-10.1V5.6L12 3Zm0 4.1a2.2 2.2 0 0 1 1.3 4v2.8h-2.6v-2.8a2.2 2.2 0 0 1 1.3-4Z" /></svg>
+          <div><strong>Giữ màn hình riêng tư</strong><span>Chỉ bạn nên nhìn thấy vai được tiết lộ trên thiết bị này.</span></div>
+        </div>
+
+        <section className="waiting-roster" aria-labelledby="waiting-roster-title">
+          <header><h3 id="waiting-roster-title">Người chơi đã sẵn sàng</h3><span>{room.playerCount ?? players.length} người</span></header>
+          <div className="waiting-roster-grid">
+            {visiblePlayers.map((player) => <article key={player.id}><span className="waiting-player-avatar">{playerInitial(player.name)}</span><strong>{player.name}</strong></article>)}
+            {remainingPlayers > 0 && <article className="waiting-roster-more" aria-label={`Và ${remainingPlayers} người chơi khác`}><span>+{remainingPlayers}</span><strong>người khác</strong></article>}
+          </div>
+        </section>
+      </div>
+    </section>
+  </PaperShell>;
 }
 
 function Moderator({ room, roles, assignments, catalog, onLeave, onMark, onDay, onNight, toast, dismissToast }) {
@@ -323,10 +503,11 @@ function PlayerRole({ room, player, role, flipped, setFlipped, toast, dismissToa
     return <PaperShell profileName={player?.name || "Người chơi"} phase={room.gamePhase}>
       {toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}
       <section className="player-board-screen">
-        <div className="paper-panel waiting-panel">
-          <div className="night-mark">☾</div>
+        <div className="paper-panel waiting-panel waiting-panel-compact">
+          <WaitingGlyph />
+          <p className="waiting-kicker">Đang bảo mật thông tin</p>
           <h2>Đang nhận vai</h2>
-          <p>Quan Trò đã bắt đầu ván chơi. Vai của bạn sẽ hiện ngay khi hệ thống hoàn tất bảo mật.</p>
+          <p className="waiting-lead">Quan Trò đã bắt đầu ván chơi. Vai của bạn sẽ hiện ngay khi hệ thống hoàn tất bảo mật.</p>
         </div>
       </section>
     </PaperShell>;
