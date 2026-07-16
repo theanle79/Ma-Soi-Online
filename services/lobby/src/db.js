@@ -28,6 +28,7 @@ export async function initializeDatabase() {
       joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       is_alive BOOLEAN NOT NULL DEFAULT TRUE,
       pending_death BOOLEAN NOT NULL DEFAULT FALSE,
+      death_night INTEGER,
       PRIMARY KEY (room_id, player_id)
     );
 
@@ -38,6 +39,7 @@ export async function initializeDatabase() {
     ALTER TABLE rooms ADD COLUMN IF NOT EXISTS end_reason TEXT;
     ALTER TABLE rooms ADD COLUMN IF NOT EXISTS ended_at TIMESTAMPTZ;
     ALTER TABLE rooms ADD COLUMN IF NOT EXISTS phase_ends_at TIMESTAMPTZ;
+    ALTER TABLE participants ADD COLUMN IF NOT EXISTS death_night INTEGER;
 
     ALTER TABLE rooms DROP CONSTRAINT IF EXISTS rooms_status_check;
     ALTER TABLE rooms ADD CONSTRAINT rooms_status_check

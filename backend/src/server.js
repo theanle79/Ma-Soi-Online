@@ -42,7 +42,21 @@ async function buildRoomState(roomId) {
     lobby(`/rooms/${roomId}`),
     roles(`/rooms/${roomId}`),
   ]);
-  return { room, roleSetup: setup };
+  if (room.status !== "ended") return { room, roleSetup: setup };
+
+  const { assignments } = await roles(`/rooms/${roomId}/results`);
+  const rolesByPlayerId = new Map(assignments.map((assignment) => [assignment.playerId, assignment.role]));
+  return {
+    room,
+    roleSetup: setup,
+    postGameSummary: room.players.map((player) => ({
+      playerId: player.id,
+      name: player.name,
+      role: rolesByPlayerId.get(player.id) || null,
+      isAlive: player.isAlive,
+      deathNight: player.deathNight ?? null,
+    })),
+  };
 }
 
 async function broadcastRoom(roomId) {

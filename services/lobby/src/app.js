@@ -262,7 +262,7 @@ export function createLobbyApp() {
             throw appError("cannot_undo_day_death", "Không thể bỏ ghi nhận tử vong ban ngày. Hãy kiểm tra trước khi xác nhận.", 409);
           }
           update = await client.query(
-            "UPDATE participants SET is_alive = FALSE, pending_death = FALSE WHERE room_id = $1 AND player_id = $2 AND is_alive = TRUE RETURNING player_id",
+            "UPDATE participants SET is_alive = FALSE, pending_death = FALSE, death_night = NULL WHERE room_id = $1 AND player_id = $2 AND is_alive = TRUE RETURNING player_id",
             [found.id, playerId],
           );
         } else {
@@ -287,8 +287,8 @@ export function createLobbyApp() {
         assertRoomStatus(found, ["playing"]);
         if (found.game_phase !== "night") throw appError("invalid_game_phase", "Hiện chưa phải ban đêm.", 409);
         await client.query(
-          "UPDATE participants SET is_alive = FALSE, pending_death = FALSE WHERE room_id = $1 AND pending_death = TRUE",
-          [found.id],
+          "UPDATE participants SET is_alive = FALSE, pending_death = FALSE, death_night = $2 WHERE room_id = $1 AND pending_death = TRUE",
+          [found.id, found.game_day],
         );
         await client.query(
           "UPDATE rooms SET game_phase = 'day', phase_ends_at = NOW() + make_interval(secs => $2) WHERE id = $1",
@@ -375,7 +375,7 @@ export function createLobbyApp() {
           [found.id],
         );
         await client.query(
-          "UPDATE participants SET is_alive = TRUE, pending_death = FALSE WHERE room_id = $1",
+          "UPDATE participants SET is_alive = TRUE, pending_death = FALSE, death_night = NULL WHERE room_id = $1",
           [found.id],
         );
         return roomSnapshot(client, found.id);
