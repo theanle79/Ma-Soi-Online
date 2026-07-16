@@ -461,10 +461,31 @@ function Moderator({ room, roles, assignments, catalog, onLeave, onMark, onDay, 
   const scriptRoles = night
     ? roles.filter((role) => roleWakesTonight(role, room.gameDay)).sort((left, right) => left.nightOrder - right.nightOrder)
     : roles.filter((role) => ["mayor", "hunter", "prince", "tanner"].includes(role.id));
+  const [activeView, setActiveView] = useState("script");
   const [dayDeathCandidateId, setDayDeathCandidateId] = useState(null);
+  const tabRefs = useRef({});
+  useEffect(() => {
+    setActiveView("script");
+    setDayDeathCandidateId(null);
+  }, [room.gamePhase, room.gameDay]);
   const confirmDayDeath = (playerId) => {
     onMark(playerId, true);
     setDayDeathCandidateId(null);
+  };
+  const selectModeratorView = (view) => setActiveView(view);
+  const handleTabKeyDown = (event, currentView) => {
+    const views = ["script", "players"];
+    const currentIndex = views.indexOf(currentView);
+    let nextIndex = currentIndex;
+    if (["ArrowRight", "ArrowDown"].includes(event.key)) nextIndex = (currentIndex + 1) % views.length;
+    else if (["ArrowLeft", "ArrowUp"].includes(event.key)) nextIndex = (currentIndex - 1 + views.length) % views.length;
+    else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = views.length - 1;
+    else return;
+    event.preventDefault();
+    const nextView = views[nextIndex];
+    setActiveView(nextView);
+    tabRefs.current[nextView]?.focus();
   };
   // Build a map of playerId -> role object for the role roster
   const roleById = useMemo(() => new Map((catalog || []).map((r) => [r.id, r])), [catalog]);
@@ -472,18 +493,33 @@ function Moderator({ room, roles, assignments, catalog, onLeave, onMark, onDay, 
   return <PaperShell profileName={room.hostName} onLeave={onLeave} phase={room.gamePhase}>
     {toast && <button className="toast" type="button" onClick={dismissToast}>{toast}</button>}
     <section className="moderator-screen">
-      <span className="ribbon">Kịch bản Quan Trò</span>
-      <div className="moderator-top"><div><h2>{night ? `Đêm ${room.gameDay}` : `Ngày ${room.gameDay}`}</h2><p>{night ? "Đọc từng lời dẫn theo thứ tự và đánh dấu người sẽ chết khi sáng." : "Cho người chơi thảo luận, biểu quyết và ghi nhận ngay mọi trường hợp tử vong ban ngày."}</p></div><button className="paper-button" type="button" onClick={night ? onDay : onNight}>{night ? "Mở ban ngày" : `Bắt đầu đêm ${room.gameDay + 1}`}</button></div>
-      <div className="moderator-grid">
+      <header className="moderator-command-bar">
+        <div className="moderator-phase-row">
+          <div className="moderator-phase-title">
+            <span>Giai đoạn hiện tại</span>
+            <h2>{night ? `Đêm ${room.gameDay}` : `Ngày ${room.gameDay}`}</h2>
+          </div>
+          <button className="paper-button moderator-phase-action" type="button" onClick={night ? onDay : onNight}>{night ? "Mở ban ngày" : `Bắt đầu đêm ${room.gameDay + 1}`}</button>
+        </div>
+        <div className="moderator-tabs" role="tablist" aria-label="Chế độ điều khiển Quan Trò">
+          <button ref={(node) => { tabRefs.current.script = node; }} id="moderator-tab-script" className={activeView === "script" ? "active" : ""} type="button" role="tab" aria-selected={activeView === "script"} aria-controls="moderator-panel-script" tabIndex={activeView === "script" ? 0 : -1} onClick={() => selectModeratorView("script")} onKeyDown={(event) => handleTabKeyDown(event, "script")}>Kịch bản</button>
+          <button ref={(node) => { tabRefs.current.players = node; }} id="moderator-tab-players" className={activeView === "players" ? "active" : ""} type="button" role="tab" aria-selected={activeView === "players"} aria-controls="moderator-panel-players" tabIndex={activeView === "players" ? 0 : -1} onClick={() => selectModeratorView("players")} onKeyDown={(event) => handleTabKeyDown(event, "players")}>Người chơi <span aria-hidden="true">{room.players.length}</span></button>
+        </div>
+      </header>
+      <div id="moderator-panel-script" className="moderator-view-panel" role="tabpanel" aria-labelledby="moderator-tab-script" tabIndex="0" hidden={activeView !== "script"}>
         <div className="script-panel">
           <h3>{night ? "Lời dẫn theo thứ tự" : "Lời dẫn ban ngày"}</h3>
+          <p className="moderator-view-note">{night ? "Đọc từng lời dẫn theo thứ tự. Chuyển sang Người chơi bất cứ lúc nào để đánh dấu người sẽ chết khi sáng." : "Cho người chơi thảo luận và biểu quyết. Chuyển sang Người chơi để xác nhận mọi trường hợp tử vong ban ngày."}</p>
           {!night && <article className="script-row featured-script"><span className="script-order">NG</span><div><strong>Mở đầu ban ngày</strong><small>Trời đã sáng, mọi người mở mắt. Những người còn sống bắt đầu thảo luận. Khi kết thúc thảo luận, làng sẽ biểu quyết một người bị nghi ngờ. Quan Trò ghi nhận kết quả trước khi chuyển sang đêm tiếp theo.</small></div></article>}
           {scriptRoles.length ? scriptRoles.map((role) => <article className="script-row" key={role.id}><span className="script-order">{night ? role.nightOrder : "!"}</span><div><strong>{role.name}{role.quantity > 1 ? ` × ${role.quantity}` : ""}</strong><small>{scriptForRole(role, room)}</small></div></article>) : night ? <p className="status-line">Đêm này không có vai nào cần thức dậy.</p> : <p className="status-line">Không có vai đặc biệt cần nhắc trong ban ngày.</p>}
-
         </div>
-        <div className="death-panel"><h3>{night ? "Ghi nhận trong đêm" : "Ghi nhận ban ngày"}</h3><p className="death-panel-note">{night ? "Các đánh dấu này sẽ được công bố khi mở ban ngày." : "Dùng sau bỏ phiếu hoặc năng lực ban ngày. Xác nhận sẽ cập nhật ngay trên thiết bị của người chơi."}</p><div className="death-roster">{room.players.map((player) => {
+      </div>
+      <div id="moderator-panel-players" className="moderator-view-panel" role="tabpanel" aria-labelledby="moderator-tab-players" tabIndex="-1" hidden={activeView !== "players"}>
+        <div className="death-panel"><div className="death-panel-heading"><div><h3>{night ? "Ghi nhận trong đêm" : "Ghi nhận ban ngày"}</h3><p className="death-panel-note">{night ? "Đánh dấu có thể đảo ngược cho đến khi mở ban ngày." : "Tử vong ban ngày chỉ được gửi sau bước xác nhận."}</p></div><span>{room.players.filter((player) => player.isAlive !== false).length} còn sống</span></div><div className="death-roster moderator-roster">{room.players.map((player) => {
           const role = assignmentMap.get(player.id);
-          return <article className={`player-card ${player.isAlive === false ? "dead" : ""} team-${role?.team || "unknown"}`} key={player.id}><span className="player-avatar">{playerInitial(player.name)}</span><div className="player-info-col"><p>{player.name}</p>{role ? <div className="player-card-role"><span className="roster-role-name">{role.name}</span><span className={`roster-team-badge team-${role.team}`}>{TEAM_LABELS[role.team] || role.team}</span></div> : <span className="roster-role-name muted">Chưa có vai</span>}<span className="status-label">{player.isAlive === false ? "Đã chết" : player.pendingDeath ? "Đã đánh dấu" : "Đang chơi"}</span></div>{night && player.isAlive && <button className={`mark-death ${player.pendingDeath ? "marked" : ""}`} type="button" onClick={() => onMark(player.id, !player.pendingDeath)}>{player.pendingDeath ? "Bỏ đánh dấu" : "Chết khi sáng"}</button>}{!night && player.isAlive && (dayDeathCandidateId === player.id ? <span className="day-death-confirm"><span>Xác nhận đã chết?</span><button className="mark-death marked" type="button" onClick={() => confirmDayDeath(player.id)}>Xác nhận</button><button className="mark-death" type="button" onClick={() => setDayDeathCandidateId(null)}>Hủy</button></span> : <button className="mark-death day" type="button" onClick={() => setDayDeathCandidateId(player.id)}>Ghi nhận đã chết</button>)}</article>
+          const alive = player.isAlive !== false;
+          const stateLabel = !alive ? "Đã chết" : player.pendingDeath ? "Chờ chết khi sáng" : "Còn sống";
+          return <article className={`player-card moderator-player ${!alive ? "dead" : ""} ${player.pendingDeath ? "pending" : ""} team-${role?.team || "unknown"}`} key={player.id}><span className="player-avatar" aria-hidden="true">{playerInitial(player.name)}</span><div className="player-info-col"><p title={player.name}>{player.name}</p>{role ? <div className="player-card-role"><span className="roster-role-name" title={role.name}>{role.name}</span><span className={`roster-team-badge team-${role.team}`}>{TEAM_LABELS[role.team] || role.team}</span></div> : <span className="roster-role-name muted">Chưa có vai</span>}<span className="status-label" aria-live="polite">{stateLabel}</span></div>{night && alive && <button className={`mark-death ${player.pendingDeath ? "marked" : ""}`} type="button" aria-label={`${player.pendingDeath ? "Bỏ đánh dấu chết khi sáng cho" : "Đánh dấu chết khi sáng cho"} ${player.name}`} aria-pressed={Boolean(player.pendingDeath)} onClick={() => onMark(player.id, !player.pendingDeath)}>{player.pendingDeath ? "Bỏ đánh dấu" : "Chết khi sáng"}</button>}{!night && alive && (dayDeathCandidateId === player.id ? <span className="day-death-confirm" role="group" aria-label={`Xác nhận ${player.name} đã chết`}><span>Xác nhận đã chết?</span><button className="mark-death marked" type="button" onClick={() => confirmDayDeath(player.id)}>Xác nhận</button><button className="mark-death" type="button" onClick={() => setDayDeathCandidateId(null)}>Hủy</button></span> : <button className="mark-death day" type="button" aria-label={`Ghi nhận ${player.name} đã chết`} onClick={() => setDayDeathCandidateId(player.id)}>Ghi nhận chết</button>)}</article>
         })}</div></div>
       </div>
     </section>
