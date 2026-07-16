@@ -238,8 +238,14 @@ io.on("connection", (socket) => {
     socket.emit("roles:host-view", result);
   }));
 
-  socket.on("roles:finalize", handle(socket, async () => {
+  socket.on("roles:finalize", handle(socket, async ({ assignments } = {}) => {
     const session = sessionFor(socket, { hostOnly: true });
+    if (assignments !== undefined) {
+      await roles(`/rooms/${session.roomId}/assign-manual`, {
+        method: "POST",
+        body: { hostId: session.actorId, assignments },
+      });
+    }
     await roles(`/rooms/${session.roomId}/finalize`, { method: "POST", body: { hostId: session.actorId } });
     await lobby(`/rooms/${session.roomId}/play`, { method: "POST", body: { hostId: session.actorId } });
     const state = await resolveGameAndBroadcast(session.roomId, session.actorId);
