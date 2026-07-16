@@ -42,7 +42,21 @@ async function buildRoomState(roomId) {
     lobby(`/rooms/${roomId}`),
     roles(`/rooms/${roomId}`),
   ]);
-  return { room, roleSetup: setup };
+  if (room.status !== "ended") return { room, roleSetup: setup };
+
+  const { assignments } = await roles(`/rooms/${roomId}/results`);
+  const rolesByPlayerId = new Map(assignments.map((assignment) => [assignment.playerId, assignment.role]));
+  return {
+    room,
+    roleSetup: setup,
+    postGameSummary: room.players.map((player) => ({
+      playerId: player.id,
+      name: player.name,
+      role: rolesByPlayerId.get(player.id) || null,
+      isAlive: player.isAlive,
+      deathNight: player.deathNight ?? null,
+    })),
+  };
 }
 
 async function broadcastRoom(roomId) {
@@ -121,14 +135,27 @@ app.get("/health", async (_req, res) => {
     res.status(error.status || 503).json({ status: "degraded", service: "realtime-gateway", error: error.message });
   }
 });
-app.post("/internal/rooms/:roomId/phase-expired", async (req, res) => {
+app.post("/internal/rooms/:roomId/:event", async (req, res) => {
   if (SERVICE_AUTH_TOKEN && req.headers.authorization !== `Bearer ${SERVICE_AUTH_TOKEN}`) {
     return res.status(401).json({ error: "unauthorized" });
   }
   try {
-    const { roomId } = req.params;
-    const { room } = await buildRoomState(roomId); // Lobby already advanced the phase; we just fan out.
-    await resolveGameAndBroadcast(roomId, room.hostId);
+    const { roomId, event } = req.params;
+    const payload = req.body || {};
+
+    if (event === "phase-expired") {
+      const { room } = await buildRoomState(roomId);
+      await resolveGameAndBroadcast(roomId, room.hostId);
+    } else if (event === "room:closed") {
+
+      await emitRoomClosed(roomId, payload.reason || "Phòng đã bị đóng do Quản Trò mất kết nối.");
+    } else {
+      io.to(roomId).emit(event, payload);
+
+      if (event === "player:left") {
+        await broadcastRoom(roomId);
+      }
+    }
     res.json({ status: "ok" });
   } catch (error) {
     res.status(error.status || 500).json({ error: error.code || "internal_error" });
@@ -157,6 +184,8 @@ io.on("connection", (socket) => {
   }));
 
   socket.on("room:resume", handle(socket, async ({ roomId, actorId }) => {
+    await lobby(`/internal/rooms/${roomId}/players/${actorId}/reconnect`, { method: "POST" });
+
     const state = await buildRoomState(roomId);
     const isHost = state.room.hostId === actorId;
     const isPlayer = state.room.players.some((player) => player.id === actorId);
@@ -224,8 +253,14 @@ io.on("connection", (socket) => {
     socket.emit("roles:host-view", result);
   }));
 
-  socket.on("roles:finalize", handle(socket, async () => {
+  socket.on("roles:finalize", handle(socket, async ({ assignments } = {}) => {
     const session = sessionFor(socket, { hostOnly: true });
+    if (assignments !== undefined) {
+      await roles(`/rooms/${session.roomId}/assign-manual`, {
+        method: "POST",
+        body: { hostId: session.actorId, assignments },
+      });
+    }
     await roles(`/rooms/${session.roomId}/finalize`, { method: "POST", body: { hostId: session.actorId } });
     await lobby(`/rooms/${session.roomId}/play`, { method: "POST", body: { hostId: session.actorId } });
     const state = await resolveGameAndBroadcast(session.roomId, session.actorId);
@@ -275,7 +310,7 @@ io.on("connection", (socket) => {
   socket.on("room:disband", handle(socket, async () => {
     const session = sessionFor(socket, { hostOnly: true });
     await lobby(`/rooms/${session.roomId}/disband`, { method: "POST", body: { hostId: session.actorId } });
-    await emitRoomClosed(session.roomId, "Quản Trò đã giải tán phòng.");
+    await emitRoomClosed(session.roomId, "Quan Trò đã giải tán phòng.");
   }));
 
   socket.on("room:leave", handle(socket, async () => {
@@ -291,8 +326,18 @@ io.on("connection", (socket) => {
     await broadcastRoom(session.roomId);
   }));
 
-  socket.on("disconnecting", () => {
+  socket.on("disconnecting", async () => {
+    const session = sessions.get(socket.id);
     sessions.delete(socket.id);
+
+    if (session) {
+      try {
+        await lobby(`/internal/rooms/${session.roomId}/players/${session.actorId}/disconnect`, { method: "POST" });
+        console.log(`[Gateway] Phát hiện rớt mạng: User ${session.actorId} (Room: ${session.roomId})`);
+      } catch (error) {
+        console.error(`[Gateway] Lỗi gọi Lobby khi ngắt kết nối: ${error.message}`);
+      }
+    }
   });
 });
 

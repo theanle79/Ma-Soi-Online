@@ -1,6 +1,6 @@
 ---
 name: ma-soi-room-role
-description: Implement or review Ma Soi Online room, lobby, game-start, and role-assignment work. Use for Quan Tro rules, six-player start validation, waiting screens, manual or random roles, or extracting Lobby, Role, and Realtime Gateway services.
+description: Implement or review Ma Sói moderator-kit room, lobby, game-start, and role-assignment work. Use for Quan Trò rules, six-player start validation, waiting screens, manual or random roles, or extracting Lobby, Role, and Realtime Gateway services.
 ---
 
 # Ma Soi Room Role
